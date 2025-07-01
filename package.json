@@ -1,6 +1,6 @@
 {
-  "name": "memory-mcp-server",
-  "version": "1.0.0",
+  "name": "memory-mcp-server-pg",
+  "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
