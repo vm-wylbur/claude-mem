@@ -3,18 +3,20 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { DatabaseService, MemoryType } from './db/service.js';
-import { createDatabaseAdapter, getConfigSummary } from './config.js';
+import { createDatabaseAdapter, createDatabaseAdapterToml, getConfigSummary } from './config.js';
+import { getConfigSummaryToml } from './config-toml.js';
 import { storeDevProgress, storeInitialProgress } from './dev-memory.js';
 import { formatHashForDisplay, parseHexToHash, isValidHashId } from './utils/hash.js';
 
 // Load environment variables
 config();
 
-// Initialize database adapter based on configuration
+// Initialize database adapter based on TOML configuration
 console.error(`🚀 Starting Memory MCP Server`);
-console.error(`📊 Database: ${getConfigSummary()}`);
+console.error(`📊 Configuration loaded`);
+console.error(`📋 ${getConfigSummaryToml()}`);
 
-const adapter = await createDatabaseAdapter();
+const adapter = await createDatabaseAdapterToml();
 const dbService = new DatabaseService(adapter);
 await dbService.initialize();
 
