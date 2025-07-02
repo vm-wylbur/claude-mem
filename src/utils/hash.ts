@@ -33,7 +33,7 @@ export async function initializeHasher(): Promise<void> {
  * 
  * @param content - The memory content text
  * @param contentType - The type of memory (conversation, code, decision, reference)
- * @returns BIGINT hash as string (for database storage)
+ * @returns Hex hash string (for database storage)
  */
 export function generateMemoryHash(content: string, contentType: string): string {
   if (!hasher) {
@@ -44,13 +44,10 @@ export function generateMemoryHash(content: string, contentType: string): string
   // This ensures same content with different types gets different IDs
   const hashInput = `${content}:${contentType}`;
   
-  // Generate xxHash64 (returns as hex string)
+  // Generate xxHash64 and return hex directly (no BigInt conversion needed)
   const hashHex = hasher(hashInput);
   
-  // Convert hex to bigint, then back to string for database storage
-  const hashBigInt = BigInt('0x' + hashHex);
-  
-  return hashBigInt.toString();
+  return hashHex;
 }
 
 /**
@@ -107,7 +104,7 @@ export function isValidHashId(hashId: string): boolean {
  * Generate a deterministic hash ID for tag names
  * 
  * @param tagName - The tag name text
- * @returns BIGINT hash as string (for database storage)
+ * @returns Hex hash string (for database storage)
  */
 export function generateTagHash(tagName: string): string {
   if (!hasher) {
