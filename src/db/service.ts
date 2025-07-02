@@ -114,14 +114,14 @@ export class DatabaseService {
     }
 
     /**
-     * Get all memories for the development project
+     * Get memories for the development project with optional pagination
      */
-    async getDevMemories(): Promise<Memory[]> {
+    async getDevMemories(limit?: number): Promise<Memory[]> {
         if (!this.devProjectId) {
             throw new Error('DatabaseService not initialized. Call initialize() first.');
         }
 
-        return this.adapter.getProjectMemories(this.devProjectId);
+        return this.adapter.getProjectMemories(this.devProjectId, limit);
     }
 
     /**

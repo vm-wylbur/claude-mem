@@ -508,8 +508,8 @@ export class PostgresAdapter implements DatabaseAdapter {
         
         // Insert tag with hash ID if not exists
         await client.query(`
-          INSERT INTO tags (tag_id, tag_name) VALUES ($1, $2)
-          ON CONFLICT (tag_name) DO NOTHING
+          INSERT INTO tags (tag_id, name) VALUES ($1, $2)
+          ON CONFLICT (name) DO NOTHING
         `, [tagId, tagName]);
         
         // Link tag to memory using hash IDs
@@ -535,13 +535,13 @@ export class PostgresAdapter implements DatabaseAdapter {
     const client = await this.pool.connect();
     try {
       const result = await client.query(`
-        SELECT t.tag_name 
+        SELECT t.name 
         FROM tags t
         JOIN memory_tags mt ON t.tag_id = mt.tag_id
         WHERE mt.memory_id = $1
       `, [memoryId]);
 
-      return result.rows.map(row => row.tag_name);
+      return result.rows.map(row => row.name);
     } finally {
       client.release();
     }
