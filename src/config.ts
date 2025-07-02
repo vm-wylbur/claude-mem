@@ -7,6 +7,7 @@
 
 import { DatabaseConfig } from './db/adapters/base.js';
 import path from 'path';
+import { getDatabaseConfigToml, getConfigSummaryToml } from './config-toml.js';
 
 /**
  * Database Configuration Management
@@ -105,5 +106,37 @@ export function getConfigSummary(): string {
       
     default:
       return 'Unknown database type';
+  }
+}
+
+/**
+ * Enhanced database adapter factory using TOML configuration
+ */
+export async function createDatabaseAdapterToml() {
+  const config = await getDatabaseConfigToml();
+  
+  switch (config.type) {
+    case 'sqlite': {
+      const { SqliteAdapter } = await import('./db/adapters/sqlite.js');
+      const { initializeDatabase } = await import('./db/init.js');
+      
+      // Ensure SQLite database schema exists
+      await initializeDatabase(config.sqlite!.path);
+      
+      const adapter = new SqliteAdapter(config);
+      await adapter.connect();
+      return adapter;
+    }
+    
+    case 'postgresql': {
+      const { PostgresAdapter } = await import('./db/adapters/postgres.js');
+      
+      const adapter = new PostgresAdapter(config);
+      await adapter.connect();
+      return adapter;
+    }
+    
+    default:
+      throw new Error(`Unsupported database type: ${config.type}`);
   }
 }

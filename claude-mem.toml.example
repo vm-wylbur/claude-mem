@@ -1,0 +1,63 @@
+# Claude Memory MCP Server Configuration
+# Place at: ~/.config/claude-mem/claude-mem.toml
+# Author: PB and Claude
+# Date: 2025-07-02
+# License: (c) HRDAG, 2025, GPL-2 or newer
+
+[database]
+# Database backend: 'sqlite' or 'postgresql' 
+type = "postgresql"
+
+[database.sqlite]
+# SQLite database file path (supports XDG Base Directory)
+path = "~/.local/share/mcp-memory/memory.db"
+# Auto-backup settings
+backup_enabled = true
+backup_path = "~/.local/share/mcp-memory/backups/"
+max_backup_files = 10
+
+[database.postgresql]
+# PostgreSQL connection settings
+hosts = ["snowl", "snowball"]  # Failover order
+database = "claude_mem"
+user = "pball"
+
+# SSH tunnel configuration
+tunnel = true
+tunnel_port = 5433
+ssh_user = "pball"
+ssh_key_path = "~/.ssh/id_rsa"
+
+# Connection pool settings
+max_connections = 5
+connection_timeout_ms = 5000
+
+[ollama]
+# Ollama service configuration
+host = "http://localhost:11434"
+model = "nomic-embed-text"
+embedding_dimensions = 768
+timeout_ms = 30000
+
+[server]
+# MCP server settings
+name = "memory-server-pg"
+version = "0.1.0"
+
+[logging]
+# Logging configuration
+level = "info"  # debug, info, warn, error
+file = "~/.local/share/mcp-memory/logs/memory-server.log"
+max_file_size_mb = 10
+max_files = 5
+
+[features]
+# Feature flags
+vector_search = true
+metadata_indexing = true
+relationship_tracking = true
+auto_embedding = true
+
+# Development/debugging features
+debug_sql = false
+verbose_search = false
