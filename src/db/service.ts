@@ -1,8 +1,14 @@
-import Database from 'better-sqlite3';
-import { z } from 'zod';
-import { generateEmbedding, storeEmbedding } from '../embeddings.js';
+// Author: PB and Claude
+// Date: 2025-07-01
+// License: (c) HRDAG, 2025, GPL-2 or newer
+//
+// ------
+// mcp-long-term-memory-pg/src/db/service-new.ts
 
-// Schema definitions
+import { z } from 'zod';
+import { DatabaseAdapter } from './adapters/base.js';
+
+// Re-export types from base for backwards compatibility
 export const MemoryType = z.enum(['conversation', 'code', 'decision', 'reference']);
 export type MemoryType = z.infer<typeof MemoryType>;
 
@@ -17,14 +23,6 @@ export const MemoryMetadata = z.object({
 });
 export type MemoryMetadata = z.infer<typeof MemoryMetadata>;
 
-interface ProjectRow {
-    project_id: number;
-    name: string;
-    description: string | null;
-    created_at: string;
-    last_accessed: string;
-}
-
 export interface Memory {
     memory_id: number;
     content: string;
@@ -36,144 +34,205 @@ export interface Memory {
     created_at: string;
 }
 
+/**
+ * Database Service Layer - Clean Architecture Implementation
+ * 
+ * This service provides a high-level interface for memory operations while
+ * delegating all database-specific logic to pluggable DatabaseAdapter implementations.
+ * 
+ * Key architectural benefits:
+ * - Database-agnostic business logic
+ * - Easy testing via adapter mocking
+ * - Consistent API regardless of backend (SQLite vs PostgreSQL)
+ * - Dependency inversion principle applied
+ * 
+ * @example
+ * ```typescript
+ * const adapter = new SqliteAdapter(config);
+ * await adapter.connect();
+ * const service = new DatabaseService(adapter);
+ * 
+ * const memoryId = await service.storeDevMemory(content, type, metadata);
+ * const similar = await service.findSimilarMemories(content, 5);
+ * ```
+ */
 export class DatabaseService {
-    private db: Database.Database;
-    private devProjectId: number;
+    private adapter: DatabaseAdapter;
+    private devProjectId: number | null = null;
 
-    constructor(db: Database.Database) {
-        this.db = db;
-        // Get development project ID
-        const result = this.db.prepare('SELECT project_id FROM projects WHERE name = ?')
-            .get('memory-mcp-development') as ProjectRow;
-        if (!result) {
-            throw new Error('Development project not found');
-        }
-        this.devProjectId = result.project_id;
+    constructor(adapter: DatabaseAdapter) {
+        this.adapter = adapter;
     }
 
     /**
-     * Store a development memory
+     * Initialize the service - must be called after construction
+     * Loads the development project ID for convenience methods
+     */
+    async initialize(): Promise<void> {
+        // Ensure development project exists
+        let devProject = await this.adapter.getProject('memory-mcp-development');
+        
+        if (!devProject) {
+            // Create development project if it doesn't exist
+            const projectId = await this.adapter.createProject(
+                'memory-mcp-development',
+                'Development history and decisions for the Memory MCP Server project'
+            );
+            this.devProjectId = projectId;
+        } else {
+            this.devProjectId = devProject.project_id;
+        }
+    }
+
+    /**
+     * Store a development memory (convenience method)
+     * Uses the default development project
      */
     async storeDevMemory(
         content: string,
         type: MemoryType,
         metadata: MemoryMetadata
     ): Promise<number> {
-        // Generate embedding
-        const vector = await generateEmbedding(content);
-        const embeddingId = storeEmbedding(this.db, vector);
+        if (!this.devProjectId) {
+            throw new Error('DatabaseService not initialized. Call initialize() first.');
+        }
 
-        const stmt = this.db.prepare(`
-            INSERT INTO memories (project_id, content, content_type, metadata, embedding_id)
-            VALUES (?, ?, ?, ?, ?)
-        `);
-
-        const result = stmt.run(
-            this.devProjectId,
-            content,
-            type,
-            JSON.stringify(metadata),
-            embeddingId
-        );
-
-        return result.lastInsertRowid as number;
+        return this.adapter.storeMemory(content, type, metadata, this.devProjectId);
     }
 
     /**
-     * Create a relationship between memories
+     * Store a memory in a specific project
      */
-    createMemoryRelationship(
-        sourceMemoryId: number,
-        targetMemoryId: number,
-        relationshipType: string
-    ): void {
-        const stmt = this.db.prepare(`
-            INSERT INTO memory_relationships (source_memory_id, target_memory_id, relationship_type)
-            VALUES (?, ?, ?)
-        `);
-
-        stmt.run(sourceMemoryId, targetMemoryId, relationshipType);
+    async storeMemory(
+        content: string,
+        type: MemoryType,
+        metadata: MemoryMetadata,
+        projectId: number
+    ): Promise<number> {
+        return this.adapter.storeMemory(content, type, metadata, projectId);
     }
 
     /**
      * Get all memories for the development project
      */
-    getDevMemories(): any[] {
-        return this.db.prepare(`
-            SELECT * FROM memories
-            WHERE project_id = ?
-            ORDER BY created_at DESC
-        `).all(this.devProjectId);
+    async getDevMemories(): Promise<Memory[]> {
+        if (!this.devProjectId) {
+            throw new Error('DatabaseService not initialized. Call initialize() first.');
+        }
+
+        return this.adapter.getProjectMemories(this.devProjectId);
+    }
+
+    /**
+     * Get memories for a specific project
+     */
+    async getProjectMemories(projectId: number, limit?: number): Promise<Memory[]> {
+        return this.adapter.getProjectMemories(projectId, limit);
     }
 
     /**
      * Get a specific memory by ID
      */
-    getMemory(memoryId: number): any {
-        return this.db.prepare('SELECT * FROM memories WHERE memory_id = ?')
-            .get(memoryId);
+    async getMemory(memoryId: number): Promise<Memory | null> {
+        return this.adapter.getMemory(memoryId);
+    }
+
+    /**
+     * Find similar memories using semantic search
+     * Searches within development project by default
+     */
+    async findSimilarMemories(content: string, limit: number = 5): Promise<Memory[]> {
+        if (!this.devProjectId) {
+            throw new Error('DatabaseService not initialized. Call initialize() first.');
+        }
+
+        return this.adapter.findSimilarMemories(content, limit, this.devProjectId);
+    }
+
+    /**
+     * Find similar memories across all projects or specific project
+     */
+    async findSimilarMemoriesInProject(
+        content: string, 
+        limit: number = 5, 
+        projectId?: number
+    ): Promise<Memory[]> {
+        return this.adapter.findSimilarMemories(content, limit, projectId);
+    }
+
+    /**
+     * Search memories by metadata properties
+     */
+    async searchByMetadata(
+        query: Record<string, any>, 
+        projectId?: number
+    ): Promise<Memory[]> {
+        const searchProjectId = projectId || this.devProjectId;
+        if (!searchProjectId) {
+            throw new Error('DatabaseService not initialized. Call initialize() first.');
+        }
+
+        return this.adapter.searchByMetadata(query, searchProjectId);
     }
 
     /**
      * Add tags to a memory
      */
-    addMemoryTags(memoryId: number, tags: string[]): void {
-        const insertTag = this.db.prepare(`
-            INSERT OR IGNORE INTO tags (name) VALUES (?)
-        `);
-        
-        const linkTag = this.db.prepare(`
-            INSERT OR IGNORE INTO memory_tags (memory_id, tag_id)
-            SELECT ?, tag_id FROM tags WHERE name = ?
-        `);
-
-        for (const tag of tags) {
-            insertTag.run(tag);
-            linkTag.run(memoryId, tag);
-        }
+    async addMemoryTags(memoryId: number, tags: string[]): Promise<void> {
+        return this.adapter.addMemoryTags(memoryId, tags);
     }
 
     /**
-     * Find similar memories using semantic search
+     * Get all tags for a memory
      */
-    async findSimilarMemories(content: string, limit: number = 5): Promise<Memory[]> {
-        const vector = await generateEmbedding(content);
-        const stmt = this.db.prepare(`
-            SELECT 
-                m.*,
-                e.vector
-            FROM memories m
-            JOIN embeddings e ON m.embedding_id = e.embedding_id
-            WHERE m.project_id = ?
-        `);
-
-        const memories = stmt.all(this.devProjectId);
-        
-        // Calculate similarities in memory (SQLite doesn't support vector operations)
-        const results = memories.map((memory: any) => {
-            // Convert BLOB to Float64Array
-            const buffer = Buffer.from(memory.vector);
-            const float64Array = new Float64Array(buffer.buffer, buffer.byteOffset, buffer.length / 8);
-            
-            let dotProduct = 0;
-            let normA = 0;
-            let normB = 0;
-            
-            for (let i = 0; i < vector.length; i++) {
-                dotProduct += vector[i] * float64Array[i];
-                normA += vector[i] * vector[i];
-                normB += float64Array[i] * float64Array[i];
-            }
-            
-            const similarity = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-            
-            // Remove the vector from the result to avoid serialization issues
-            const { vector: _, ...memoryWithoutVector } = memory;
-            return { ...memoryWithoutVector, similarity };
-        });
-        
-        return results
-            .sort((a, b) => b.similarity - a.similarity)
-            .slice(0, limit);
+    async getMemoryTags(memoryId: number): Promise<string[]> {
+        return this.adapter.getMemoryTags(memoryId);
     }
-} 
+
+    /**
+     * Create a relationship between memories
+     */
+    async createMemoryRelationship(
+        sourceMemoryId: number,
+        targetMemoryId: number,
+        relationshipType: string
+    ): Promise<void> {
+        return this.adapter.createMemoryRelationship(sourceMemoryId, targetMemoryId, relationshipType);
+    }
+
+    /**
+     * Create a new project
+     */
+    async createProject(name: string, description?: string): Promise<number> {
+        return this.adapter.createProject(name, description);
+    }
+
+    /**
+     * Get project by name
+     */
+    async getProject(name: string): Promise<{project_id: number; name: string; description?: string} | null> {
+        return this.adapter.getProject(name);
+    }
+
+    /**
+     * Get the underlying adapter for advanced operations
+     * Use sparingly - prefer the high-level methods above
+     */
+    getAdapter(): DatabaseAdapter {
+        return this.adapter;
+    }
+
+    /**
+     * Check if the database connection is healthy
+     */
+    async healthCheck(): Promise<boolean> {
+        return this.adapter.healthCheck();
+    }
+
+    /**
+     * Close database connection
+     */
+    async disconnect(): Promise<void> {
+        return this.adapter.disconnect();
+    }
+}

@@ -4,9 +4,10 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc && cp src/schema.sql dist/",
+    "build": "tsc && cp src/schema.sql dist/ && cp src/db/postgres-schema.sql dist/",
     "start": "node dist/index.js",
     "dev": "npm run build && npm start",
+    "init:postgres": "npm run build && MCPMEM_DB_TYPE=postgresql node dist/scripts/init-postgres.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -15,11 +16,15 @@
   "description": "Long-term memory storage system for LLMs using MCP protocol",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.7.0",
+    "@types/pg": "^8.15.4",
+    "@types/ssh2": "^1.15.5",
     "better-sqlite3": "^11.9.1",
     "commander": "^12.0.0",
     "dotenv": "^16.4.7",
     "express": "^5.0.1",
     "node-fetch": "^3.3.2",
+    "pg": "^8.16.3",
+    "ssh2": "^1.16.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {

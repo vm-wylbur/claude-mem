@@ -1,19 +1,20 @@
 #!/usr/bin/env node
 
 import { program } from 'commander';
-import { initializeDatabase } from './db/init.js';
 import { DatabaseService, MemoryType, Memory } from './db/service.js';
+import { createDatabaseAdapter, getConfigSummary } from './config.js';
 import { config } from 'dotenv';
-import path from 'path';
 import { storeDevProgress } from './dev-memory.js';
 
 // Load environment variables
 config();
 
-// Initialize database
-const dbPath = process.env.DB_PATH || path.join(process.cwd(), 'memory.db');
-const db = await initializeDatabase(dbPath);
-const dbService = new DatabaseService(db);
+// Initialize database adapter based on configuration
+console.error(`📊 Database: ${getConfigSummary()}`);
+
+const adapter = await createDatabaseAdapter();
+const dbService = new DatabaseService(adapter);
+await dbService.initialize();
 
 program
     .name('mem')
@@ -41,7 +42,7 @@ program
             });
 
             if (options.tags) {
-                dbService.addMemoryTags(memoryId, options.tags);
+                await dbService.addMemoryTags(memoryId, options.tags);
             }
 
             console.log(`✨ Memory stored successfully with ID: ${memoryId}`);
@@ -58,7 +59,7 @@ program
     .option('-t, --tag <tag>', 'Filter by tag')
     .action(async (options) => {
         try {
-            const memories = dbService.getDevMemories();
+            const memories = await dbService.getDevMemories();
             const limit = parseInt(options.limit);
             
             let filtered = memories;
@@ -92,7 +93,7 @@ program
     .argument('<id>', 'Memory ID')
     .action(async (id) => {
         try {
-            const memory = dbService.getMemory(parseInt(id));
+            const memory = await dbService.getMemory(parseInt(id));
             if (!memory) {
                 console.error('❌ Memory not found');
                 process.exit(1);

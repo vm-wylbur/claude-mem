@@ -1,22 +1,21 @@
 import { config } from 'dotenv';
-import path from 'path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { initializeDatabase } from './db/init.js';
 import { DatabaseService, MemoryType } from './db/service.js';
+import { createDatabaseAdapter, getConfigSummary } from './config.js';
 import { storeDevProgress, storeInitialProgress } from './dev-memory.js';
 
 // Load environment variables
 config();
 
-// Initialize database
-const dbPath = process.env.DB_PATH || path.join(process.cwd(), 'memory.db');
-console.error(`Initializing database at ${dbPath}`);
+// Initialize database adapter based on configuration
+console.error(`🚀 Starting Memory MCP Server`);
+console.error(`📊 Database: ${getConfigSummary()}`);
 
-// Create database connection
-const db = await initializeDatabase(dbPath);
-const dbService = new DatabaseService(db);
+const adapter = await createDatabaseAdapter();
+const dbService = new DatabaseService(adapter);
+await dbService.initialize();
 
 // Store initial development progress
 await storeInitialProgress(dbService);
@@ -59,7 +58,7 @@ server.tool(
             });
 
             if (tags) {
-                dbService.addMemoryTags(memoryId, tags);
+                await dbService.addMemoryTags(memoryId, tags);
             }
 
             return {
@@ -90,12 +89,12 @@ server.tool(
     },
     async ({ limit = 10, tag }) => {
         try {
-            const memories = dbService.getDevMemories();
+            const memories = await dbService.getDevMemories();
             let filtered = memories;
 
             if (tag) {
-                // TODO: Implement tag filtering
-                filtered = memories.filter(m => m.tags?.includes(tag));
+                // TODO: Implement proper tag filtering using database queries
+                console.error(`Note: Tag filtering for "${tag}" not yet implemented in list operation`);
             }
 
             const limited = filtered.slice(0, limit);
@@ -126,7 +125,7 @@ server.tool(
     },
     async ({ memoryId }) => {
         try {
-            const memory = dbService.getMemory(memoryId);
+            const memory = await dbService.getMemory(memoryId);
             if (!memory) {
                 return {
                     isError: true,

@@ -1,0 +1,325 @@
+// Author: PB and Claude
+// Date: 2025-07-01
+// License: (c) HRDAG, 2025, GPL-2 or newer
+//
+// ------
+// mcp-long-term-memory-pg/src/db/adapters/sqlite.ts
+
+import Database from 'better-sqlite3';
+import { DatabaseAdapter, DatabaseConfig, DatabaseConnectionError } from './base.js';
+import { MemoryType, MemoryMetadata, Memory } from '../service.js';
+import { generateEmbedding, storeEmbedding } from '../../embeddings.js';
+
+/**
+ * SQLite Database Adapter Implementation
+ * 
+ * Provides SQLite backend for the memory management system.
+ * Uses better-sqlite3 for database operations and in-memory cosine similarity
+ * for semantic search since SQLite doesn't have native vector operations.
+ * 
+ * @features
+ * - BLOB storage for embeddings with in-memory similarity calculation
+ * - JSON metadata storage with string serialization
+ * - Synchronous operations (SQLite nature)
+ * - File-based database with configurable path
+ */
+export class SqliteAdapter implements DatabaseAdapter {
+  private db: Database.Database | null = null;
+  private config: DatabaseConfig;
+  private isConnected = false;
+
+  constructor(config: DatabaseConfig) {
+    if (config.type !== 'sqlite' || !config.sqlite) {
+      throw new DatabaseConnectionError('Invalid SQLite configuration', 'sqlite');
+    }
+    this.config = config;
+  }
+
+  //
+  // Connection Lifecycle
+  //
+
+  async connect(): Promise<void> {
+    try {
+      const dbPath = this.config.sqlite!.path;
+      this.db = new Database(dbPath, { readonly: false });
+      
+      // Verify database has required tables
+      const tables = this.db.prepare(`
+        SELECT name FROM sqlite_master 
+        WHERE type='table' AND name IN ('projects', 'memories', 'embeddings', 'tags', 'memory_tags')
+      `).all();
+      
+      if (tables.length < 5) {
+        throw new DatabaseConnectionError(
+          'Database missing required tables. Run database initialization first.', 
+          'sqlite'
+        );
+      }
+      
+      this.isConnected = true;
+    } catch (error) {
+      throw new DatabaseConnectionError(
+        `Failed to connect to SQLite: ${error}`,
+        'sqlite'
+      );
+    }
+  }
+
+  async disconnect(): Promise<void> {
+    if (this.db) {
+      this.db.close();
+      this.db = null;
+      this.isConnected = false;
+    }
+  }
+
+  async healthCheck(): Promise<boolean> {
+    if (!this.db || !this.isConnected) return false;
+    
+    try {
+      // Simple query to test connection
+      this.db.prepare('SELECT 1').get();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  //
+  // Core Memory Operations
+  //
+
+  async storeMemory(
+    content: string,
+    type: MemoryType,
+    metadata: MemoryMetadata,
+    projectId: number
+  ): Promise<number> {
+    if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
+
+    // Generate embedding for content
+    const vector = await generateEmbedding(content);
+    const embeddingId = storeEmbedding(this.db, vector);
+
+    // Store memory with embedding reference
+    const stmt = this.db.prepare(`
+      INSERT INTO memories (project_id, content, content_type, metadata, embedding_id)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+
+    const result = stmt.run(
+      projectId,
+      content,
+      type,
+      JSON.stringify(metadata),
+      embeddingId
+    );
+
+    return result.lastInsertRowid as number;
+  }
+
+  async getMemory(memoryId: number): Promise<Memory | null> {
+    if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
+
+    const stmt = this.db.prepare('SELECT * FROM memories WHERE memory_id = ?');
+    const result = stmt.get(memoryId) as any;
+    
+    return result || null;
+  }
+
+  async getProjectMemories(projectId: number, limit?: number): Promise<Memory[]> {
+    if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
+
+    let query = `
+      SELECT * FROM memories 
+      WHERE project_id = ? 
+      ORDER BY created_at DESC
+    `;
+    
+    if (limit) {
+      query += ` LIMIT ${limit}`;
+    }
+
+    const stmt = this.db.prepare(query);
+    return stmt.all(projectId) as Memory[];
+  }
+
+  //
+  // Search Operations
+  //
+
+  async findSimilarMemories(
+    content: string,
+    limit: number,
+    projectId?: number
+  ): Promise<Memory[]> {
+    if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
+
+    // Generate embedding for search query
+    const queryVector = await generateEmbedding(content);
+    
+    // Get all memories with embeddings
+    let whereClause = '';
+    let params: any[] = [];
+    
+    if (projectId) {
+      whereClause = 'WHERE m.project_id = ?';
+      params.push(projectId);
+    }
+
+    const stmt = this.db.prepare(`
+      SELECT m.*, e.vector
+      FROM memories m
+      JOIN embeddings e ON m.embedding_id = e.embedding_id
+      ${whereClause}
+    `);
+
+    const memories = stmt.all(...params);
+
+    // Calculate similarities in memory (SQLite doesn't support vector operations)
+    const results = memories.map((memory: any) => {
+      // Convert BLOB to Float64Array
+      const buffer = Buffer.from(memory.vector);
+      const float64Array = new Float64Array(buffer.buffer, buffer.byteOffset, buffer.length / 8);
+      
+      // Calculate cosine similarity
+      let dotProduct = 0;
+      let normA = 0;
+      let normB = 0;
+      
+      for (let i = 0; i < queryVector.length; i++) {
+        dotProduct += queryVector[i] * float64Array[i];
+        normA += queryVector[i] * queryVector[i];
+        normB += float64Array[i] * float64Array[i];
+      }
+      
+      const similarity = dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+      
+      // Remove vector from result and add similarity
+      const { vector: _, ...memoryWithoutVector } = memory;
+      return { ...memoryWithoutVector, similarity };
+    });
+
+    // Sort by similarity and return top results
+    return results
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, limit);
+  }
+
+  async searchByMetadata(
+    query: Record<string, any>,
+    projectId?: number
+  ): Promise<Memory[]> {
+    if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
+
+    // SQLite JSON support is limited, so we'll do basic string matching
+    // This is a simplified implementation - PostgreSQL version will be more sophisticated
+    let whereConditions = [];
+    let params: any[] = [];
+
+    // Add project filter if specified
+    if (projectId) {
+      whereConditions.push('project_id = ?');
+      params.push(projectId);
+    }
+
+    // Add metadata search conditions
+    for (const [key, value] of Object.entries(query)) {
+      whereConditions.push(`metadata LIKE ?`);
+      params.push(`%"${key}"%${value}%`);
+    }
+
+    const whereClause = whereConditions.length > 0 
+      ? `WHERE ${whereConditions.join(' AND ')}`
+      : '';
+
+    const stmt = this.db.prepare(`
+      SELECT * FROM memories 
+      ${whereClause}
+      ORDER BY created_at DESC
+    `);
+
+    return stmt.all(...params) as Memory[];
+  }
+
+  //
+  // Project Management
+  //
+
+  async createProject(name: string, description?: string): Promise<number> {
+    if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
+
+    const stmt = this.db.prepare(`
+      INSERT INTO projects (name, description)
+      VALUES (?, ?)
+    `);
+
+    const result = stmt.run(name, description || null);
+    return result.lastInsertRowid as number;
+  }
+
+  async getProject(name: string): Promise<{project_id: number; name: string; description?: string} | null> {
+    if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
+
+    const stmt = this.db.prepare('SELECT project_id, name, description FROM projects WHERE name = ?');
+    const result = stmt.get(name) as any;
+    
+    return result || null;
+  }
+
+  //
+  // Tag Management
+  //
+
+  async addMemoryTags(memoryId: number, tags: string[]): Promise<void> {
+    if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
+
+    const insertTag = this.db.prepare(`
+      INSERT OR IGNORE INTO tags (name) VALUES (?)
+    `);
+    
+    const linkTag = this.db.prepare(`
+      INSERT OR IGNORE INTO memory_tags (memory_id, tag_id)
+      SELECT ?, tag_id FROM tags WHERE name = ?
+    `);
+
+    for (const tag of tags) {
+      insertTag.run(tag);
+      linkTag.run(memoryId, tag);
+    }
+  }
+
+  async getMemoryTags(memoryId: number): Promise<string[]> {
+    if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
+
+    const stmt = this.db.prepare(`
+      SELECT t.name 
+      FROM tags t
+      JOIN memory_tags mt ON t.tag_id = mt.tag_id
+      WHERE mt.memory_id = ?
+    `);
+
+    const results = stmt.all(memoryId) as any[];
+    return results.map(row => row.name);
+  }
+
+  //
+  // Relationship Management
+  //
+
+  async createMemoryRelationship(
+    sourceMemoryId: number,
+    targetMemoryId: number,
+    relationshipType: string
+  ): Promise<void> {
+    if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
+
+    const stmt = this.db.prepare(`
+      INSERT INTO memory_relationships (source_memory_id, target_memory_id, relationship_type)
+      VALUES (?, ?, ?)
+    `);
+
+    stmt.run(sourceMemoryId, targetMemoryId, relationshipType);
+  }
+}
