@@ -11,7 +11,7 @@ import { spawn, ChildProcess } from 'child_process';
 import { DatabaseAdapter, DatabaseConfig, DatabaseConnectionError } from './base.js';
 import { MemoryType, MemoryMetadata, Memory } from '../service.js';
 import { generateEmbedding } from '../../embeddings.js';
-import { generateMemoryHash, initializeHasher } from '../../utils/hash.js';
+import { generateMemoryHash, generateTagHash, initializeHasher } from '../../utils/hash.js';
 
 const { Pool } = pg;
 
@@ -502,19 +502,22 @@ export class PostgresAdapter implements DatabaseAdapter {
     try {
       await client.query('BEGIN');
 
-      for (const tag of tags) {
-        // Insert tag if not exists
-        await client.query(`
-          INSERT INTO tags (name) VALUES ($1)
-          ON CONFLICT (name) DO NOTHING
-        `, [tag]);
+      for (const tagName of tags) {
+        // Generate hash-based tag ID
+        const tagId = generateTagHash(tagName);
         
-        // Link tag to memory
+        // Insert tag with hash ID if not exists
+        await client.query(`
+          INSERT INTO tags (tag_id, tag_name) VALUES ($1, $2)
+          ON CONFLICT (tag_name) DO NOTHING
+        `, [tagId, tagName]);
+        
+        // Link tag to memory using hash IDs
         await client.query(`
           INSERT INTO memory_tags (memory_id, tag_id)
-          SELECT $1, tag_id FROM tags WHERE name = $2
+          VALUES ($1, $2)
           ON CONFLICT (memory_id, tag_id) DO NOTHING
-        `, [memoryId, tag]);
+        `, [memoryId, tagId]);
       }
 
       await client.query('COMMIT');
@@ -532,13 +535,13 @@ export class PostgresAdapter implements DatabaseAdapter {
     const client = await this.pool.connect();
     try {
       const result = await client.query(`
-        SELECT t.name 
+        SELECT t.tag_name 
         FROM tags t
         JOIN memory_tags mt ON t.tag_id = mt.tag_id
         WHERE mt.memory_id = $1
       `, [memoryId]);
 
-      return result.rows.map(row => row.name);
+      return result.rows.map(row => row.tag_name);
     } finally {
       client.release();
     }

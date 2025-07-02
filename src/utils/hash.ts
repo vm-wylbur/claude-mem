@@ -104,6 +104,57 @@ export function isValidHashId(hashId: string): boolean {
 }
 
 /**
+ * Generate a deterministic hash ID for tag names
+ * 
+ * @param tagName - The tag name text
+ * @returns BIGINT hash as string (for database storage)
+ */
+export function generateTagHash(tagName: string): string {
+  if (!hasher) {
+    throw new Error('Hash utility not initialized. Call initializeHasher() first.');
+  }
+  
+  if (!isValidTagName(tagName)) {
+    throw new Error(`Invalid tag name: ${tagName}`);
+  }
+  
+  // Normalize tag name for consistent hashing
+  const normalizedName = tagName.toLowerCase().trim();
+  const hashInput = `tag:${normalizedName}`;
+  
+  // Generate xxHash64 (returns as hex string)
+  const hashHex = hasher(hashInput);
+  
+  // Convert hex to bigint, then back to string for database storage
+  const hashBigInt = BigInt('0x' + hashHex);
+  
+  return hashBigInt.toString();
+}
+
+/**
+ * Validate that a tag name is properly formatted
+ * 
+ * @param tagName - Tag name to validate
+ * @returns true if valid tag name
+ */
+export function isValidTagName(tagName: string): boolean {
+  if (typeof tagName !== 'string') return false;
+  
+  const trimmed = tagName.trim();
+  
+  // Must be non-empty and reasonable length
+  if (trimmed.length === 0 || trimmed.length > 100) return false;
+  
+  // No leading/trailing whitespace after trim
+  if (trimmed !== tagName) return false;
+  
+  // No control characters or problematic characters
+  if (/[\x00-\x1f\x7f-\x9f]/.test(trimmed)) return false;
+  
+  return true;
+}
+
+/**
  * Generate hash for existing data migration
  * Use this to generate consistent hashes for data that already exists
  * 
@@ -126,6 +177,37 @@ export function generateMigrationHash(
   let hashInput = `${content}:${contentType}`;
   if (createdAt) {
     hashInput += `:${createdAt}`;
+  }
+  
+  const hashHex = hasher(hashInput);
+  const hashBigInt = BigInt('0x' + hashHex);
+  
+  return hashBigInt.toString();
+}
+
+/**
+ * Generate hash for tag migration
+ * Use this to generate consistent hashes for existing tag data
+ * 
+ * @param tagName - Tag name from existing data
+ * @param tagId - Optional original tag ID for collision detection
+ * @returns BIGINT hash as string
+ */
+export function generateTagMigrationHash(tagName: string, tagId?: number): string {
+  if (!hasher) {
+    throw new Error('Hash utility not initialized. Call initializeHasher() first.');
+  }
+  
+  // Normalize the tag name the same way as generateTagHash
+  const normalizedName = tagName.toLowerCase().trim();
+  
+  // Use the same input format as generateTagHash for consistency
+  let hashInput = `tag:${normalizedName}`;
+  
+  // If we have collision concerns, we can include the original ID
+  if (tagId !== undefined) {
+    // This is a fallback for the extremely unlikely case of hash collision
+    hashInput += `:fallback:${tagId}`;
   }
   
   const hashHex = hasher(hashInput);

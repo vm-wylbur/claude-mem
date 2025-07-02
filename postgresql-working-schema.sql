@@ -1,6 +1,6 @@
--- Working PostgreSQL Schema (extracted 2025-07-02)
--- This is the actual schema that works after migration fixes
--- Key difference: memory_id is TEXT (not BIGINT) to support xxHash64 values
+-- Hash-Based Tag Schema for PostgreSQL (v2025-07-02)
+-- This schema uses TEXT-based hash IDs for both memories AND tags
+-- Unified hash-based ID system eliminates architectural inconsistencies
 
 -- Enable pgvector extension
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -14,34 +14,34 @@ CREATE TABLE projects (
     last_accessed TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Memories table (FIXED: memory_id as TEXT not BIGINT)
+-- Memories table (memory_id as TEXT for xxHash64)
 CREATE TABLE memories (
-    memory_id TEXT PRIMARY KEY,  -- xxHash64 as string (CRITICAL FIX)
+    memory_id TEXT PRIMARY KEY,  -- xxHash64 as string
     project_id INTEGER NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
     content TEXT NOT NULL,
     content_type VARCHAR(50) NOT NULL CHECK (content_type IN ('conversation', 'code', 'decision', 'reference')),
     metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,  -- ADDED during migration
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     embedding VECTOR(768)  -- pgvector for semantic search
 );
 
--- Tags table
+-- Tags table (UPDATED: tag_id as TEXT for xxHash64)
 CREATE TABLE tags (
-    tag_id SERIAL PRIMARY KEY,
+    tag_id TEXT PRIMARY KEY,  -- xxHash64 hash of tag name
     tag_name TEXT NOT NULL UNIQUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Memory-Tag relationships
+-- Memory-Tag relationships (UPDATED: both IDs as TEXT)
 CREATE TABLE memory_tags (
     memory_id TEXT NOT NULL REFERENCES memories(memory_id) ON DELETE CASCADE,
-    tag_id INTEGER NOT NULL REFERENCES tags(tag_id) ON DELETE CASCADE,
+    tag_id TEXT NOT NULL REFERENCES tags(tag_id) ON DELETE CASCADE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (memory_id, tag_id)
 );
 
--- Memory relationships (references, builds_on, etc.)
+-- Memory relationships
 CREATE TABLE memory_relationships (
     relationship_id SERIAL PRIMARY KEY,
     source_memory_id TEXT NOT NULL REFERENCES memories(memory_id) ON DELETE CASCADE,
@@ -51,13 +51,23 @@ CREATE TABLE memory_relationships (
     UNIQUE(source_memory_id, target_memory_id, relationship_type)
 );
 
--- Indexes for performance
+-- Performance indexes
 CREATE INDEX idx_memories_project_id ON memories(project_id);
 CREATE INDEX idx_memories_content_type ON memories(content_type);
 CREATE INDEX idx_memories_created_at ON memories(created_at DESC);
 CREATE INDEX idx_memories_metadata ON memories USING GIN(metadata);
 CREATE INDEX idx_memories_embedding_cosine ON memories USING hnsw (embedding vector_cosine_ops);
 
+-- Tag indexes (for hash-based tag operations)
+CREATE INDEX idx_tags_name ON tags(tag_name);
+CREATE INDEX idx_tags_created_at ON tags(created_at DESC);
+
+-- Memory-tag relationship indexes
+CREATE INDEX idx_memory_tags_memory ON memory_tags(memory_id);
+CREATE INDEX idx_memory_tags_tag ON memory_tags(tag_id);
+CREATE INDEX idx_memory_tags_created_at ON memory_tags(created_at DESC);
+
+-- Memory relationship indexes
 CREATE INDEX idx_memory_relationships_source ON memory_relationships(source_memory_id);
 CREATE INDEX idx_memory_relationships_target ON memory_relationships(target_memory_id);
 
