@@ -115,11 +115,12 @@ server.tool(
                 }]
             };
         } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
             return {
                 isError: true,
                 content: [{
                     type: 'text',
-                    text: `Error generating overview: ${error}`
+                    text: `Error generating overview: ${errorMessage}`
                 }]
             };
         }
@@ -160,11 +161,12 @@ server.tool(
                 }]
             };
         } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
             return {
                 isError: true,
                 content: [{
                     type: 'text',
-                    text: `Error storing memory: ${error}`
+                    text: `Error storing memory: ${errorMessage}`
                 }]
             };
         }
@@ -216,11 +218,12 @@ server.tool(
                 }]
             };
         } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
             return {
                 isError: true,
                 content: [{
                     type: 'text',
-                    text: `Error listing memories: ${error}`
+                    text: `Error listing memories: ${errorMessage}`
                 }]
             };
         }
@@ -277,11 +280,12 @@ memoryId: z.string().describe('Hash ID of the memory to retrieve (hex format lik
                 }]
             };
         } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
             return {
                 isError: true,
                 content: [{
                     type: 'text',
-                    text: `Error retrieving memory: ${error}`
+                    text: `Error retrieving memory: ${errorMessage}`
                 }]
             };
         }
@@ -333,11 +337,12 @@ server.tool(
             };
         } catch (error) {
             console.error('Search error:', error);
+            const errorMessage = error instanceof Error ? error.message : String(error);
             return {
                 isError: true,
                 content: [{
                     type: 'text',
-                    text: `Error searching memories: ${error}`
+                    text: `Error searching memories: ${errorMessage}`
                 }]
             };
         }
