@@ -7,10 +7,11 @@
 
 import pg from 'pg';
 import fs from 'fs';
-import { Client } from 'ssh2';
+import { spawn, ChildProcess } from 'child_process';
 import { DatabaseAdapter, DatabaseConfig, DatabaseConnectionError } from './base.js';
 import { MemoryType, MemoryMetadata, Memory } from '../service.js';
 import { generateEmbedding } from '../../embeddings.js';
+import { generateMemoryHash, initializeHasher } from '../../utils/hash.js';
 
 const { Pool } = pg;
 
@@ -36,7 +37,7 @@ const { Pool } = pg;
 export class PostgresAdapter implements DatabaseAdapter {
   private pool: pg.Pool | null = null;
   private config: DatabaseConfig;
-  private sshClient: Client | null = null;
+  private sshProcess: ChildProcess | null = null;
   private localPort: number | null = null;
   private isConnected = false;
 
@@ -53,6 +54,9 @@ export class PostgresAdapter implements DatabaseAdapter {
 
   async connect(): Promise<void> {
     const pgConfig = this.config.postgresql!;
+    
+    // Initialize hash utility
+    await initializeHasher();
     
     if (pgConfig.tunnel) {
       await this.establishSshTunnel();
@@ -122,38 +126,82 @@ export class PostgresAdapter implements DatabaseAdapter {
       try {
         console.error(`🚇 Attempting SSH tunnel to ${host}...`);
         
-        this.sshClient = new Client();
         this.localPort = tunnelPort;
         
+        // Use command-line SSH like the Python script (more reliable than ssh2 library)
+        const sshCmd = [
+          'ssh',
+          '-o', 'ControlMaster=no',
+          '-o', 'ServerAliveInterval=30', 
+          '-o', 'ServerAliveCountMax=3',
+          '-o', 'ConnectTimeout=10',
+          '-o', 'BatchMode=yes',  // No password prompts
+          '-N',  // Don't execute remote command
+          '-L', `${tunnelPort}:127.0.0.1:5432`,  // Local:Remote port forwarding
+          host
+        ];
+        
+        // Start SSH tunnel process
+        this.sshProcess = spawn(sshCmd[0], sshCmd.slice(1), {
+          stdio: ['ignore', 'pipe', 'pipe'],
+          detached: false
+        });
+        
+        // Wait for tunnel to establish (like Python script)
         await new Promise<void>((resolve, reject) => {
-          this.sshClient!.on('ready', () => {
-            // Forward local port to remote PostgreSQL
-            this.sshClient!.forwardOut(
-              '127.0.0.1', 0, // Local binding
-              '127.0.0.1', 5432, // Remote PostgreSQL
-              (err, stream) => {
-                if (err) {
-                  reject(new Error(`SSH tunnel forwarding failed: ${err.message}`));
-                  return;
-                }
-                console.error(`✅ SSH tunnel established via ${host} -> localhost:${tunnelPort}`);
-                resolve();
+          const timeout = setTimeout(() => {
+            this.cleanupSsh();
+            reject(new Error('SSH tunnel timeout'));
+          }, 15000);
+          
+          // Check if tunnel is ready by testing the port
+          const checkTunnel = async () => {
+            for (let i = 0; i < 30; i++) {  // Wait up to 15 seconds
+              await new Promise(resolve => setTimeout(resolve, 500));
+              
+              try {
+                // Try to connect to the tunnel port (like Python's lsof check)
+                const testProcess = spawn('nc', ['-z', 'localhost', tunnelPort.toString()], {
+                  stdio: 'ignore'
+                });
+                
+                await new Promise<void>((resolveTest, rejectTest) => {
+                  testProcess.on('close', (code) => {
+                    if (code === 0) {
+                      clearTimeout(timeout);
+                      console.error(`✅ SSH tunnel established via ${host} -> localhost:${tunnelPort}`);
+                      resolve();
+                    } else {
+                      rejectTest(new Error('Port not ready'));
+                    }
+                  });
+                });
+                
+                return; // Success!
+              } catch (error) {
+                // Continue checking...
               }
-            );
+            }
+            
+            // If we get here, tunnel failed
+            clearTimeout(timeout);
+            this.cleanupSsh();
+            reject(new Error('SSH tunnel failed to establish'));
+          };
+          
+          checkTunnel();
+          
+          // Handle SSH process errors
+          this.sshProcess!.on('error', (err) => {
+            clearTimeout(timeout);
+            reject(new Error(`SSH process error: ${err.message}`));
           });
-
-          this.sshClient!.on('error', (err) => {
-            reject(new Error(`SSH connection to ${host} failed: ${err.message}`));
-          });
-
-          // Connect to SSH host
-          this.sshClient!.connect({
-            host: host,
-            username: process.env.MCPMEM_SSH_USER || 'pball',
-            privateKey: fs.readFileSync(
-              process.env.MCPMEM_SSH_KEY_PATH || `${process.env.HOME}/.ssh/id_rsa`
-            ),
-            keepaliveInterval: 60000,
+          
+          this.sshProcess!.on('exit', (code, signal) => {
+            if (code !== null && code !== 0) {
+              clearTimeout(timeout);
+              reject(new Error(`SSH process exited with code ${code}`));
+            }
           });
         });
 
@@ -161,7 +209,7 @@ export class PostgresAdapter implements DatabaseAdapter {
         return;
       } catch (error) {
         console.error(`❌ SSH tunnel to ${host} failed: ${error}`);
-        await this.cleanupSsh();
+        this.cleanupSsh();
         
         // If this was the last host, throw error
         if (host === pgConfig.hosts[pgConfig.hosts.length - 1]) {
@@ -183,15 +231,28 @@ export class PostgresAdapter implements DatabaseAdapter {
       await this.pool.end();
       this.pool = null;
     }
-    await this.cleanupSsh();
+    this.cleanupSsh();
     this.isConnected = false;
   }
 
-  private async cleanupSsh(): Promise<void> {
-    if (this.sshClient) {
-      this.sshClient.end();
-      this.sshClient = null;
-      this.localPort = null;
+  private cleanupSsh(): void {
+    if (this.sshProcess) {
+      try {
+        // Terminate the SSH process gracefully
+        this.sshProcess.kill('SIGTERM');
+        
+        // Give it a moment to clean up
+        setTimeout(() => {
+          if (this.sshProcess && !this.sshProcess.killed) {
+            this.sshProcess.kill('SIGKILL');
+          }
+        }, 2000);
+        
+        this.sshProcess = null;
+        this.localPort = null;
+      } catch (error) {
+        console.error('Error cleaning up SSH process:', error);
+      }
     }
   }
 
@@ -220,22 +281,28 @@ export class PostgresAdapter implements DatabaseAdapter {
     type: MemoryType,
     metadata: MemoryMetadata,
     projectId: number
-  ): Promise<number> {
+  ): Promise<string> {
     if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
 
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
 
+      // Generate hash-based memory ID
+      const memoryId = generateMemoryHash(content, type);
+
       // Generate embedding for content
       const vector = await generateEmbedding(content);
       
-      // Store memory with vector embedding
+      // Store memory with hash ID and vector embedding
       const result = await client.query(`
-        INSERT INTO memories (project_id, content, content_type, metadata, embedding)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO memories (memory_id, project_id, content, content_type, metadata, embedding)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (memory_id) DO UPDATE SET
+          updated_at = CURRENT_TIMESTAMP
         RETURNING memory_id
       `, [
+        memoryId,
         projectId,
         content,
         type,
@@ -253,7 +320,7 @@ export class PostgresAdapter implements DatabaseAdapter {
     }
   }
 
-  async getMemory(memoryId: number): Promise<Memory | null> {
+  async getMemory(memoryId: string): Promise<Memory | null> {
     if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
 
     const client = await this.pool.connect();
@@ -428,7 +495,7 @@ export class PostgresAdapter implements DatabaseAdapter {
   // Tag Management
   //
 
-  async addMemoryTags(memoryId: number, tags: string[]): Promise<void> {
+  async addMemoryTags(memoryId: string, tags: string[]): Promise<void> {
     if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
 
     const client = await this.pool.connect();
@@ -459,7 +526,7 @@ export class PostgresAdapter implements DatabaseAdapter {
     }
   }
 
-  async getMemoryTags(memoryId: number): Promise<string[]> {
+  async getMemoryTags(memoryId: string): Promise<string[]> {
     if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
 
     const client = await this.pool.connect();
@@ -482,8 +549,8 @@ export class PostgresAdapter implements DatabaseAdapter {
   //
 
   async createMemoryRelationship(
-    sourceMemoryId: number,
-    targetMemoryId: number,
+    sourceMemoryId: string,
+    targetMemoryId: string,
     relationshipType: string
   ): Promise<void> {
     if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');

@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { DatabaseService, MemoryType } from './db/service.js';
 import { createDatabaseAdapter, getConfigSummary } from './config.js';
 import { storeDevProgress, storeInitialProgress } from './dev-memory.js';
+import { formatHashForDisplay, parseHexToHash, isValidHashId } from './utils/hash.js';
 
 // Load environment variables
 config();
@@ -17,8 +18,14 @@ const adapter = await createDatabaseAdapter();
 const dbService = new DatabaseService(adapter);
 await dbService.initialize();
 
-// Store initial development progress
-await storeInitialProgress(dbService);
+// Store initial development progress (skip if we already have memories)
+const existingMemories = await dbService.getDevMemories();
+if (existingMemories.length === 0) {
+  console.error('📝 Storing initial development progress...');
+  await storeInitialProgress(dbService);
+} else {
+  console.error(`📚 Found ${existingMemories.length} existing memories - skipping initial setup`);
+}
 
 // Create MCP Server with proper initialization
 const server = new McpServer({
@@ -64,7 +71,7 @@ server.tool(
             return {
                 content: [{
                     type: 'text',
-                    text: `Successfully stored memory with ID: ${memoryId}`
+                    text: `Successfully stored memory with ID: ${formatHashForDisplay(memoryId)}`
                 }]
             };
         } catch (error) {
@@ -98,10 +105,17 @@ server.tool(
             }
 
             const limited = filtered.slice(0, limit);
+            
+            // Format memories with hex IDs for display
+            const displayMemories = limited.map(memory => ({
+                ...memory,
+                memory_id: formatHashForDisplay(memory.memory_id)
+            }));
+            
             return {
                 content: [{
                     type: 'text',
-                    text: JSON.stringify(limited, null, 2)
+                    text: JSON.stringify(displayMemories, null, 2)
                 }]
             };
         } catch (error) {
@@ -121,11 +135,28 @@ server.tool(
     'get-dev-memory',
     'Get a specific development memory by ID',
     {
-        memoryId: z.number().describe('ID of the memory to retrieve')
+memoryId: z.string().describe('Hash ID of the memory to retrieve (hex format like a1b2c3d4e5f67890)')
     },
     async ({ memoryId }) => {
         try {
-            const memory = await dbService.getMemory(memoryId);
+            // Convert hex format to hash ID for database lookup
+            let hashId: string;
+            try {
+                hashId = parseHexToHash(memoryId);
+                if (!isValidHashId(hashId)) {
+                    throw new Error('Invalid hash format');
+                }
+            } catch {
+                return {
+                    isError: true,
+                    content: [{
+                        type: 'text',
+                        text: `Invalid memory ID format: ${memoryId}. Expected hex format like a1b2c3d4e5f67890`
+                    }]
+                };
+            }
+            
+            const memory = await dbService.getMemory(hashId);
             if (!memory) {
                 return {
                     isError: true,
@@ -136,10 +167,16 @@ server.tool(
                 };
             }
 
+            // Format memory with hex ID for display
+            const displayMemory = {
+                ...memory,
+                memory_id: formatHashForDisplay(memory.memory_id)
+            };
+
             return {
                 content: [{
                     type: 'text',
-                    text: JSON.stringify(memory, null, 2)
+                    text: JSON.stringify(displayMemory, null, 2)
                 }]
             };
         } catch (error) {
@@ -179,7 +216,7 @@ server.tool(
             const formattedResults = memories.map(memory => {
                 const metadata = JSON.parse(memory.metadata);
                 return {
-                    id: memory.memory_id,
+                    id: formatHashForDisplay(memory.memory_id),  // Display as hex
                     similarity: `${((memory.similarity || 0) * 100).toFixed(1)}%`,
                     content: memory.content,
                     type: memory.content_type,

@@ -4,11 +4,14 @@
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc && cp src/schema.sql dist/ && cp src/db/postgres-schema.sql dist/",
+    "build": "tsc && cp src/schema.sql dist/ && cp src/db/postgres-schema.sql dist/ && cp -r scripts/ dist/ || true",
     "start": "node dist/index.js",
     "dev": "npm run build && npm start",
-    "init:postgres": "npm run build && MCPMEM_DB_TYPE=postgresql node dist/scripts/init-postgres.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "init:postgres": "npm run build && MCPMEM_DB_TYPE=postgresql npx tsx scripts/init-postgres.ts",
+    "test": "npm run test:all",
+    "test:all": "npx tsx scripts/test-all.ts",
+    "test:ssh": "npx tsx scripts/test-ssh-tunnel.ts",
+    "test:postgres": "MCPMEM_DB_TYPE=postgresql npx tsx scripts/test-postgres.ts"
   },
   "keywords": [],
   "author": "",
@@ -25,12 +28,14 @@
     "node-fetch": "^3.3.2",
     "pg": "^8.16.3",
     "ssh2": "^1.16.0",
+    "xxhash-wasm": "^1.1.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.9",
     "@types/express": "^5.0.0",
     "@types/node": "^20.11.28",
+    "tsx": "^4.20.3",
     "typescript": "^5.4.2"
   }
 }

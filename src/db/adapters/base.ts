@@ -63,21 +63,21 @@ export interface DatabaseAdapter {
    * @param type - Type of memory (conversation, code, decision, reference)
    * @param metadata - Structured metadata for the memory
    * @param projectId - Project this memory belongs to
-   * @returns Promise resolving to the new memory ID
+   * @returns Promise resolving to the new memory hash ID (as string)
    */
   storeMemory(
     content: string, 
     type: MemoryType, 
     metadata: MemoryMetadata, 
     projectId: number
-  ): Promise<number>;
+  ): Promise<string>;
 
   /**
    * Retrieve a specific memory by ID
-   * @param memoryId - Unique identifier for the memory
+   * @param memoryId - Hash identifier for the memory (BIGINT as string)
    * @returns Promise resolving to Memory object or null if not found
    */
-  getMemory(memoryId: number): Promise<Memory | null>;
+  getMemory(memoryId: string): Promise<Memory | null>;
 
   /**
    * Get all memories for a specific project
@@ -147,17 +147,17 @@ export interface DatabaseAdapter {
    * Add tags to a memory
    * Creates tags if they don't exist, links them to the memory
    * 
-   * @param memoryId - Memory to tag
+   * @param memoryId - Memory hash ID to tag (BIGINT as string)
    * @param tags - Array of tag strings
    */
-  addMemoryTags(memoryId: number, tags: string[]): Promise<void>;
+  addMemoryTags(memoryId: string, tags: string[]): Promise<void>;
 
   /**
    * Get all tags for a memory
-   * @param memoryId - Memory to get tags for
+   * @param memoryId - Memory hash ID to get tags for (BIGINT as string)
    * @returns Promise resolving to array of tag strings
    */
-  getMemoryTags(memoryId: number): Promise<string[]>;
+  getMemoryTags(memoryId: string): Promise<string[]>;
 
   //
   // Relationship Management
@@ -165,13 +165,13 @@ export interface DatabaseAdapter {
 
   /**
    * Create relationship between two memories
-   * @param sourceMemoryId - Source memory ID
-   * @param targetMemoryId - Target memory ID  
+   * @param sourceMemoryId - Source memory hash ID (BIGINT as string)
+   * @param targetMemoryId - Target memory hash ID (BIGINT as string)
    * @param relationshipType - Type of relationship (e.g., 'references', 'builds_on')
    */
   createMemoryRelationship(
-    sourceMemoryId: number, 
-    targetMemoryId: number, 
+    sourceMemoryId: string, 
+    targetMemoryId: string, 
     relationshipType: string
   ): Promise<void>;
 }

@@ -19,19 +19,20 @@ export const MemoryMetadata = z.object({
     dependencies_added: z.array(z.string()).optional(),
     files_created: z.array(z.string()).optional(),
     date: z.string(),
-    related_memories: z.array(z.number()).optional()
+    related_memories: z.array(z.string()).optional()  // Now string hash IDs
 });
 export type MemoryMetadata = z.infer<typeof MemoryMetadata>;
 
 export interface Memory {
-    memory_id: number;
+    memory_id: string;  // BIGINT hash as string
     content: string;
     content_type: string;
     metadata: string;
     similarity?: number;
-    embedding_id?: number;
+    embedding?: string;  // pgvector embedding as string
     project_id: number;
     created_at: string;
+    updated_at?: string;
 }
 
 /**
@@ -92,7 +93,7 @@ export class DatabaseService {
         content: string,
         type: MemoryType,
         metadata: MemoryMetadata
-    ): Promise<number> {
+    ): Promise<string> {
         if (!this.devProjectId) {
             throw new Error('DatabaseService not initialized. Call initialize() first.');
         }
@@ -108,7 +109,7 @@ export class DatabaseService {
         type: MemoryType,
         metadata: MemoryMetadata,
         projectId: number
-    ): Promise<number> {
+    ): Promise<string> {
         return this.adapter.storeMemory(content, type, metadata, projectId);
     }
 
@@ -133,7 +134,7 @@ export class DatabaseService {
     /**
      * Get a specific memory by ID
      */
-    async getMemory(memoryId: number): Promise<Memory | null> {
+    async getMemory(memoryId: string): Promise<Memory | null> {
         return this.adapter.getMemory(memoryId);
     }
 
@@ -178,14 +179,14 @@ export class DatabaseService {
     /**
      * Add tags to a memory
      */
-    async addMemoryTags(memoryId: number, tags: string[]): Promise<void> {
+    async addMemoryTags(memoryId: string, tags: string[]): Promise<void> {
         return this.adapter.addMemoryTags(memoryId, tags);
     }
 
     /**
      * Get all tags for a memory
      */
-    async getMemoryTags(memoryId: number): Promise<string[]> {
+    async getMemoryTags(memoryId: string): Promise<string[]> {
         return this.adapter.getMemoryTags(memoryId);
     }
 
@@ -193,8 +194,8 @@ export class DatabaseService {
      * Create a relationship between memories
      */
     async createMemoryRelationship(
-        sourceMemoryId: number,
-        targetMemoryId: number,
+        sourceMemoryId: string,
+        targetMemoryId: string,
         relationshipType: string
     ): Promise<void> {
         return this.adapter.createMemoryRelationship(sourceMemoryId, targetMemoryId, relationshipType);

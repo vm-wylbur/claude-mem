@@ -5,6 +5,7 @@ import { DatabaseService, MemoryType, Memory } from './db/service.js';
 import { createDatabaseAdapter, getConfigSummary } from './config.js';
 import { config } from 'dotenv';
 import { storeDevProgress } from './dev-memory.js';
+import { formatHashForDisplay, parseHexToHash } from './utils/hash.js';
 
 // Load environment variables
 config();
@@ -45,7 +46,7 @@ program
                 await dbService.addMemoryTags(memoryId, options.tags);
             }
 
-            console.log(`✨ Memory stored successfully with ID: ${memoryId}`);
+            console.log(`✨ Memory stored successfully with ID: ${formatHashForDisplay(memoryId)}`); 
         } catch (error) {
             console.error('❌ Failed to store memory:', error);
             process.exit(1);
@@ -71,7 +72,7 @@ program
             console.log('\n📝 Recent Memories:\n');
             filtered.slice(0, limit).forEach(memory => {
                 const metadata = JSON.parse(memory.metadata);
-                console.log(`ID: ${memory.memory_id} (${memory.content_type}) - ${memory.created_at}`);
+                console.log(`ID: ${formatHashForDisplay(memory.memory_id)} (${memory.content_type}) - ${memory.created_at}`);
                 console.log(`Content: ${memory.content}`);
                 if (metadata.implementation_status) {
                     console.log(`Status: ${metadata.implementation_status}`);
@@ -90,10 +91,11 @@ program
 program
     .command('get')
     .description('Get a specific memory by ID')
-    .argument('<id>', 'Memory ID')
+    .argument('<id>', 'Memory ID (hex format like a1b2c3d4e5f67890)')
     .action(async (id) => {
         try {
-            const memory = await dbService.getMemory(parseInt(id));
+            const hashId = parseHexToHash(id);
+            const memory = await dbService.getMemory(hashId);
             if (!memory) {
                 console.error('❌ Memory not found');
                 process.exit(1);

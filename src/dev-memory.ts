@@ -5,7 +5,7 @@ export async function storeDevProgress(
     content: string,
     type: MemoryType = 'decision',
     metadata: Partial<MemoryMetadata> = {}
-): Promise<number> {
+): Promise<string> {
     const fullMetadata: MemoryMetadata = {
         date: new Date().toISOString(),
         ...metadata

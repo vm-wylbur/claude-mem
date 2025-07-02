@@ -9,6 +9,7 @@ import Database from 'better-sqlite3';
 import { DatabaseAdapter, DatabaseConfig, DatabaseConnectionError } from './base.js';
 import { MemoryType, MemoryMetadata, Memory } from '../service.js';
 import { generateEmbedding, storeEmbedding } from '../../embeddings.js';
+import { generateMemoryHash, initializeHasher } from '../../utils/hash.js';
 
 /**
  * SQLite Database Adapter Implementation
@@ -41,6 +42,9 @@ export class SqliteAdapter implements DatabaseAdapter {
 
   async connect(): Promise<void> {
     try {
+      // Initialize hash utility
+      await initializeHasher();
+      
       const dbPath = this.config.sqlite!.path;
       this.db = new Database(dbPath, { readonly: false });
       
@@ -95,20 +99,24 @@ export class SqliteAdapter implements DatabaseAdapter {
     type: MemoryType,
     metadata: MemoryMetadata,
     projectId: number
-  ): Promise<number> {
+  ): Promise<string> {
     if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
+
+    // Generate hash-based memory ID
+    const memoryId = generateMemoryHash(content, type);
 
     // Generate embedding for content
     const vector = await generateEmbedding(content);
     const embeddingId = storeEmbedding(this.db, vector);
 
-    // Store memory with embedding reference
+    // Store memory with hash ID and embedding reference
     const stmt = this.db.prepare(`
-      INSERT INTO memories (project_id, content, content_type, metadata, embedding_id)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO memories (memory_id, project_id, content, content_type, metadata, embedding_id)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
 
-    const result = stmt.run(
+    stmt.run(
+      memoryId,
       projectId,
       content,
       type,
@@ -116,10 +124,10 @@ export class SqliteAdapter implements DatabaseAdapter {
       embeddingId
     );
 
-    return result.lastInsertRowid as number;
+    return memoryId;
   }
 
-  async getMemory(memoryId: number): Promise<Memory | null> {
+  async getMemory(memoryId: string): Promise<Memory | null> {
     if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
 
     const stmt = this.db.prepare('SELECT * FROM memories WHERE memory_id = ?');
@@ -272,7 +280,7 @@ export class SqliteAdapter implements DatabaseAdapter {
   // Tag Management
   //
 
-  async addMemoryTags(memoryId: number, tags: string[]): Promise<void> {
+  async addMemoryTags(memoryId: string, tags: string[]): Promise<void> {
     if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
 
     const insertTag = this.db.prepare(`
@@ -290,7 +298,7 @@ export class SqliteAdapter implements DatabaseAdapter {
     }
   }
 
-  async getMemoryTags(memoryId: number): Promise<string[]> {
+  async getMemoryTags(memoryId: string): Promise<string[]> {
     if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
 
     const stmt = this.db.prepare(`
@@ -309,8 +317,8 @@ export class SqliteAdapter implements DatabaseAdapter {
   //
 
   async createMemoryRelationship(
-    sourceMemoryId: number,
-    targetMemoryId: number,
+    sourceMemoryId: string,
+    targetMemoryId: string,
     relationshipType: string
   ): Promise<void> {
     if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');

@@ -18,6 +18,17 @@ export async function initializeDatabase(dbPath: string): Promise<Database.Datab
     const db = new Database(dbPath, { readonly: false });
     
     try {
+        // Check if the database already has the correct schema (hash-based IDs)
+        const tableInfo = db.prepare("PRAGMA table_info(memories)").all() as any[];
+        const memoryIdColumn = tableInfo.find(col => col.name === 'memory_id');
+        
+        if (memoryIdColumn && memoryIdColumn.type === 'TEXT') {
+            console.error('✅ Database already has hash-based schema - skipping initialization');
+            return db;
+        }
+        
+        console.error('🔧 Initializing database with hash-based schema...');
+        
         // Read and execute schema
         let schemaPath = path.join(__dirname, '..', 'schema.sql');
         console.error('Trying schema path:', schemaPath);
