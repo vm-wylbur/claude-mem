@@ -191,6 +191,40 @@ export class DatabaseService {
     }
 
     /**
+     * Get all available tags, optionally filtered by project
+     */
+    async getAllTags(projectId?: number): Promise<string[]> {
+        return this.adapter.getAllTags(projectId);
+    }
+
+    /**
+     * Get all tags available for the development project
+     */
+    async getDevTags(): Promise<string[]> {
+        if (!this.devProjectId) {
+            throw new Error('DatabaseService not initialized. Call initialize() first.');
+        }
+        return this.adapter.getAllTags(this.devProjectId);
+    }
+
+    /**
+     * Get memories that have a specific tag
+     */
+    async getMemoriesByTag(tagName: string, projectId?: number, limit?: number): Promise<Memory[]> {
+        return this.adapter.getMemoriesByTag(tagName, projectId, limit);
+    }
+
+    /**
+     * Get development project memories that have a specific tag
+     */
+    async getDevMemoriesByTag(tagName: string, limit?: number): Promise<Memory[]> {
+        if (!this.devProjectId) {
+            throw new Error('DatabaseService not initialized. Call initialize() first.');
+        }
+        return this.adapter.getMemoriesByTag(tagName, this.devProjectId, limit);
+    }
+
+    /**
      * Create a relationship between memories
      */
     async createMemoryRelationship(

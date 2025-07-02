@@ -547,6 +547,66 @@ export class PostgresAdapter implements DatabaseAdapter {
     }
   }
 
+  async getAllTags(projectId?: number): Promise<string[]> {
+    if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
+
+    const client = await this.pool.connect();
+    try {
+      let query = 'SELECT DISTINCT t.name FROM tags t';
+      let params: any[] = [];
+
+      if (projectId) {
+        query += `
+          JOIN memory_tags mt ON t.tag_id = mt.tag_id
+          JOIN memories m ON mt.memory_id = m.memory_id
+          WHERE m.project_id = $1
+        `;
+        params.push(projectId);
+      }
+      
+      query += ' ORDER BY t.name';
+      
+      const result = await client.query(query, params);
+      return result.rows.map(row => row.name);
+    } finally {
+      client.release();
+    }
+  }
+
+  async getMemoriesByTag(tagName: string, projectId?: number, limit?: number): Promise<Memory[]> {
+    if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
+
+    const client = await this.pool.connect();
+    try {
+      let query = `
+        SELECT DISTINCT m.*, 1 - (m.embedding::vector <=> m.embedding::vector) AS similarity
+        FROM memories m
+        JOIN memory_tags mt ON m.memory_id = mt.memory_id
+        JOIN tags t ON mt.tag_id = t.tag_id
+        WHERE t.name = $1
+      `;
+      let params: any[] = [tagName];
+
+      if (projectId) {
+        query += ' AND m.project_id = $2';
+        params.push(projectId);
+      }
+
+      query += ' ORDER BY m.created_at DESC';
+
+      if (limit) {
+        const limitParam = projectId ? '$3' : '$2';
+        query += ` LIMIT ${limitParam}`;
+        params.push(limit);
+      }
+
+      const result = await client.query(query, params);
+      return result.rows;
+    } finally {
+      client.release();
+    }
+  }
+
   //
   // Relationship Management
   //

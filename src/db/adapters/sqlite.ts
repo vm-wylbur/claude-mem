@@ -312,6 +312,56 @@ export class SqliteAdapter implements DatabaseAdapter {
     return results.map(row => row.name);
   }
 
+  async getAllTags(projectId?: number): Promise<string[]> {
+    if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
+
+    let query = 'SELECT DISTINCT t.name FROM tags t';
+    let params: any[] = [];
+
+    if (projectId) {
+      query += `
+        JOIN memory_tags mt ON t.tag_id = mt.tag_id
+        JOIN memories m ON mt.memory_id = m.memory_id
+        WHERE m.project_id = ?
+      `;
+      params.push(projectId);
+    }
+    
+    query += ' ORDER BY t.name';
+    
+    const stmt = this.db.prepare(query);
+    const results = stmt.all(...params) as any[];
+    return results.map(row => row.name);
+  }
+
+  async getMemoriesByTag(tagName: string, projectId?: number, limit?: number): Promise<Memory[]> {
+    if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
+
+    let query = `
+      SELECT DISTINCT m.*
+      FROM memories m
+      JOIN memory_tags mt ON m.memory_id = mt.memory_id
+      JOIN tags t ON mt.tag_id = t.tag_id
+      WHERE t.name = ?
+    `;
+    let params: any[] = [tagName];
+
+    if (projectId) {
+      query += ' AND m.project_id = ?';
+      params.push(projectId);
+    }
+
+    query += ' ORDER BY m.created_at DESC';
+
+    if (limit) {
+      query += ' LIMIT ?';
+      params.push(limit);
+    }
+
+    const stmt = this.db.prepare(query);
+    return stmt.all(...params) as Memory[];
+  }
+
   //
   // Relationship Management
   //

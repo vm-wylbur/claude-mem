@@ -39,7 +39,9 @@ const server = new McpServer({
             'store-dev-memory': true,
             'list-dev-memories': true,
             'get-dev-memory': true,
-            'search': true
+            'search': true,
+            'get-all-tags': true,
+            'list-memories-by-tag': true
         }
     }
 });
@@ -343,6 +345,89 @@ server.tool(
                 content: [{
                     type: 'text',
                     text: `Error searching memories: ${errorMessage}`
+                }]
+            };
+        }
+    }
+);
+
+// Add tool to get all available tags
+server.tool(
+    'get-all-tags',
+    'Get all available tags in the memory system for browsing and discovery.',
+    {},
+    async () => {
+        try {
+            const tags = await dbService.getDevTags();
+            
+            if (!tags.length) {
+                return {
+                    content: [{
+                        type: 'text',
+                        text: 'No tags found in the memory system.'
+                    }]
+                };
+            }
+
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify(tags, null, 2)
+                }]
+            };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            return {
+                isError: true,
+                content: [{
+                    type: 'text',
+                    text: `Error retrieving tags: ${errorMessage}`
+                }]
+            };
+        }
+    }
+);
+
+// Add tool to list memories by tag
+server.tool(
+    'list-memories-by-tag',
+    'Get all memories that have a specific tag for targeted browsing.',
+    {
+        tagName: z.string().describe('Name of the tag to filter memories by'),
+        limit: z.number().optional().describe('Maximum number of memories to return (default: 10)')
+    },
+    async ({ tagName, limit = 10 }) => {
+        try {
+            const memories = await dbService.getDevMemoriesByTag(tagName, limit);
+            
+            if (!memories.length) {
+                return {
+                    content: [{
+                        type: 'text',
+                        text: `No memories found with tag "${tagName}".`
+                    }]
+                };
+            }
+
+            // Format memories with hex IDs for display
+            const displayMemories = memories.map(memory => ({
+                ...memory,
+                memory_id: formatHashForDisplay(memory.memory_id)
+            }));
+
+            return {
+                content: [{
+                    type: 'text',
+                    text: JSON.stringify(displayMemories, null, 2)
+                }]
+            };
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            return {
+                isError: true,
+                content: [{
+                    type: 'text',
+                    text: `Error listing memories by tag: ${errorMessage}`
                 }]
             };
         }

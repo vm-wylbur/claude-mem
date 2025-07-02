@@ -159,6 +159,22 @@ export interface DatabaseAdapter {
    */
   getMemoryTags(memoryId: string): Promise<string[]>;
 
+  /**
+   * Get all available tags in the system
+   * @param projectId - Optional project filter
+   * @returns Promise resolving to array of tag strings
+   */
+  getAllTags(projectId?: number): Promise<string[]>;
+
+  /**
+   * Get memories that have a specific tag
+   * @param tagName - Name of the tag to filter by
+   * @param projectId - Optional project filter
+   * @param limit - Optional limit on number of results
+   * @returns Promise resolving to array of Memory objects
+   */
+  getMemoriesByTag(tagName: string, projectId?: number, limit?: number): Promise<Memory[]>;
+
   //
   // Relationship Management
   //
