@@ -44,7 +44,7 @@ export function generateMemoryHash(content: string, contentType: string): string
   // This ensures same content with different types gets different IDs
   const hashInput = `${content}:${contentType}`;
   
-  // Generate xxHash64 and return hex directly (no BigInt conversion needed)
+  // Generate xxHash64 hex string directly
   const hashHex = hasher(hashInput);
   
   return hashHex;
@@ -117,7 +117,7 @@ export function generateTagHash(tagName: string): string {
   const normalizedName = tagName.toLowerCase().trim();
   const hashInput = `tag:${normalizedName}`;
   
-  // Generate xxHash64 and return hex directly
+  // Generate xxHash64 hex string directly
   const hashHex = hasher(hashInput);
   
   return hashHex;
@@ -171,9 +171,9 @@ export function generateMigrationHash(
     hashInput += `:${createdAt}`;
   }
   
-  const hashHex = hasher(hashInput);
+  const hashBigInt = hasher(hashInput);
   
-  return hashHex;
+  return hashBigInt.toString(16);
 }
 
 /**
@@ -201,7 +201,7 @@ export function generateTagMigrationHash(tagName: string, tagId?: number): strin
     hashInput += `:fallback:${tagId}`;
   }
   
-  const hashHex = hasher(hashInput);
+  const hashBigInt = hasher(hashInput);
   
-  return hashHex;
+  return hashBigInt.toString(16);
 }
