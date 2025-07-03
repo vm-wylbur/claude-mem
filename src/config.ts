@@ -18,11 +18,12 @@ import { getDatabaseConfigToml, getConfigSummaryToml } from './config-toml.js';
  * Environment Variables:
  * - MCPMEM_DB_TYPE: 'sqlite' | 'postgresql' (default: 'sqlite')
  * - MCPMEM_DB_PATH: SQLite database file path
- * - MCPMEM_PG_HOSTS: Comma-separated PostgreSQL hosts (for SSH tunnel failover)
+ * - MCPMEM_PG_HOSTS: Comma-separated PostgreSQL hosts
  * - MCPMEM_PG_DATABASE: PostgreSQL database name
  * - MCPMEM_PG_USER: PostgreSQL username
- * - MCPMEM_PG_TUNNEL: Enable SSH tunneling ('true'|'false')
- * - MCPMEM_PG_TUNNEL_PORT: Local port for SSH tunnel
+ * - MCPMEM_PG_PASSWORD: PostgreSQL password
+ * - MCPMEM_PG_PORT: PostgreSQL port (default: 5432)
+ * - MCPMEM_PG_SSLMODE: PostgreSQL SSL mode
  */
 
 export function getDatabaseConfig(): DatabaseConfig {
@@ -38,17 +39,18 @@ export function getDatabaseConfig(): DatabaseConfig {
       };
       
     case 'postgresql':
-      const pgHosts = process.env.MCPMEM_PG_HOSTS?.split(',') || ['snowl', 'snowball'];
-      const pgTunnel = process.env.MCPMEM_PG_TUNNEL?.toLowerCase() === 'true';
+      const pgHosts = process.env.MCPMEM_PG_HOSTS?.split(',') || ['localhost'];
       
       return {
         type: 'postgresql',
         postgresql: {
           hosts: pgHosts,
-          database: process.env.MCPMEM_PG_DATABASE || 'claude_mem',
-          user: process.env.MCPMEM_PG_USER || 'pball',
-          tunnel: pgTunnel,
-          tunnelPort: process.env.MCPMEM_PG_TUNNEL_PORT ? parseInt(process.env.MCPMEM_PG_TUNNEL_PORT) : 5433
+          database: process.env.MCPMEM_PG_DATABASE || 'defaultdb',
+          user: process.env.MCPMEM_PG_USER || 'postgres',
+          password: process.env.MCPMEM_PG_PASSWORD,
+          port: process.env.MCPMEM_PG_PORT ? parseInt(process.env.MCPMEM_PG_PORT) : 5432,
+          sslmode: process.env.MCPMEM_PG_SSLMODE,
+          // Removed: tunnel property (SSH tunnel support removed)
         }
       };
       
@@ -101,8 +103,7 @@ export function getConfigSummary(): string {
       
     case 'postgresql':
       const pg = config.postgresql!;
-      const tunnelInfo = pg.tunnel ? ` via SSH tunnel (${pg.hosts.join(', ')})` : '';
-      return `PostgreSQL: ${pg.database}@${pg.hosts[0]}${tunnelInfo}`;
+      return `PostgreSQL: ${pg.database}@${pg.hosts[0]}:${pg.port || 5432}`;
       
     default:
       return 'Unknown database type';

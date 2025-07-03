@@ -24,12 +24,12 @@ interface TomlConfig {
       hosts: string[];
       database: string;
       user: string;
-      tunnel: boolean;
-      tunnel_port?: number;
-      ssh_user?: string;
-      ssh_key_path?: string;
+      password?: string;
+      port?: number;
+      sslmode?: string;
       max_connections?: number;
       connection_timeout_ms?: number;
+      // Removed: SSH tunnel fields no longer supported
     };
   };
   ollama?: {
@@ -135,11 +135,9 @@ export class TomlConfigLoader {
       // PostgreSQL configuration
       const hosts = process.env.MCPMEM_PG_HOSTS?.split(',') || 
                    this.config?.database.postgresql?.hosts || 
-                   ['snowl', 'snowball'];
+                   ['localhost']; // Default to localhost if not configured
                    
-      const tunnel = process.env.MCPMEM_PG_TUNNEL?.toLowerCase() === 'true' || 
-                    this.config?.database.postgresql?.tunnel || 
-                    true;
+      // Removed: SSH tunnel environment variable fallbacks (MCPMEM_PG_TUNNEL, etc.)
                     
       return {
         type: 'postgresql',
@@ -151,11 +149,16 @@ export class TomlConfigLoader {
           user: process.env.MCPMEM_PG_USER || 
                this.config?.database.postgresql?.user || 
                'pball',
-          tunnel,
-          tunnelPort: process.env.MCPMEM_PG_TUNNEL_PORT ? 
-                     parseInt(process.env.MCPMEM_PG_TUNNEL_PORT) : 
-                     this.config?.database.postgresql?.tunnel_port || 
-                     5433
+          password: process.env.MCPMEM_PG_PASSWORD || 
+                   this.config?.database.postgresql?.password,
+          port: process.env.MCPMEM_PG_PORT ? 
+               parseInt(process.env.MCPMEM_PG_PORT) : 
+               this.config?.database.postgresql?.port,
+          sslmode: process.env.MCPMEM_PG_SSLMODE || 
+                  this.config?.database.postgresql?.sslmode,
+          // Removed: tunnel property (SSH tunnel support removed)
+          max_connections: this.config?.database.postgresql?.max_connections,
+          connection_timeout_ms: this.config?.database.postgresql?.connection_timeout_ms
         }
       };
     }

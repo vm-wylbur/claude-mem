@@ -11,8 +11,8 @@ import xxhash from 'xxhash-wasm';
  * xxHash64-based memory ID utilities
  * 
  * Uses xxHash64 for blazing-fast, collision-resistant hash generation
- * Stores as BIGINT (8 bytes) for maximum database performance
- * Displays as hex strings for human readability
+ * Stores as hex strings directly for simplicity and to avoid BigInt overflow
+ * Human-readable hex format eliminates conversion overhead
  */
 
 let hasher: any = null;
@@ -72,16 +72,14 @@ export function formatHashForDisplay(hashId: string | bigint | null | undefined)
 }
 
 /**
- * Parse a hex-formatted hash back to BIGINT string
+ * Parse a hex-formatted hash (now this is just cleanup/validation)
  * 
  * @param hexHash - Hex string (e.g., "a1b2c3d4e5f67890")
- * @returns BIGINT hash as string for database operations
+ * @returns Clean hex string for database operations
  */
 export function parseHexToHash(hexHash: string): string {
-  // Remove any 0x prefix if present
-  const cleanHex = hexHash.replace(/^0x/, '');
-  const bigintValue = BigInt('0x' + cleanHex);
-  return bigintValue.toString();
+  // Remove any 0x prefix if present and return clean hex
+  return hexHash.replace(/^0x/, '').toLowerCase();
 }
 
 /**
@@ -119,7 +117,7 @@ export function generateTagHash(tagName: string): string {
   const normalizedName = tagName.toLowerCase().trim();
   const hashInput = `tag:${normalizedName}`;
   
-  // Generate xxHash64 and return hex directly (no BigInt conversion needed)
+  // Generate xxHash64 and return hex directly
   const hashHex = hasher(hashInput);
   
   return hashHex;
@@ -174,9 +172,8 @@ export function generateMigrationHash(
   }
   
   const hashHex = hasher(hashInput);
-  const hashBigInt = BigInt('0x' + hashHex);
   
-  return hashBigInt.toString();
+  return hashHex;
 }
 
 /**
@@ -205,7 +202,6 @@ export function generateTagMigrationHash(tagName: string, tagId?: number): strin
   }
   
   const hashHex = hasher(hashInput);
-  const hashBigInt = BigInt('0x' + hashHex);
   
-  return hashBigInt.toString();
+  return hashHex;
 }

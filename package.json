@@ -10,7 +10,6 @@
     "init:postgres": "npm run build && MCPMEM_DB_TYPE=postgresql npx tsx scripts/init-postgres.ts",
     "test": "npm run test:all",
     "test:all": "npx tsx scripts/test-all.ts",
-    "test:ssh": "npx tsx scripts/test-ssh-tunnel.ts",
     "test:postgres": "MCPMEM_DB_TYPE=postgresql npx tsx scripts/test-postgres.ts"
   },
   "keywords": [],
@@ -20,14 +19,12 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.7.0",
     "@types/pg": "^8.15.4",
-    "@types/ssh2": "^1.15.5",
     "better-sqlite3": "^11.9.1",
     "commander": "^12.0.0",
     "dotenv": "^16.4.7",
     "express": "^5.0.1",
     "node-fetch": "^3.3.2",
     "pg": "^8.16.3",
-    "ssh2": "^1.16.0",
     "toml": "^3.0.0",
     "xxhash-wasm": "^1.1.0",
     "zod": "^3.22.4"

@@ -38,7 +38,7 @@ export interface DatabaseAdapter {
   
   /**
    * Establish connection to the database
-   * Handles connection pooling, SSH tunnels, etc. as needed
+   * Handles connection pooling and direct database connections
    */
   connect(): Promise<void>;
   
@@ -204,11 +204,15 @@ export interface DatabaseConfig {
   };
   
   postgresql?: {
-    hosts: string[];        // SSH tunnel targets ['snowl', 'snowball']
+    hosts: string[];        // Database hosts for direct connection
     database: string;
     user: string;
-    tunnel: boolean;
-    tunnelPort?: number;
+    password?: string;      // Database password
+    port?: number;          // Database port (default: 5432)
+    sslmode?: string;       // SSL mode (require, disable, etc.)
+    max_connections?: number;
+    connection_timeout_ms?: number;
+    // Removed: tunnel and tunnelPort fields (SSH tunnel support removed)
   };
 }
 

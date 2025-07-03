@@ -7,7 +7,7 @@
 
 import pg from 'pg';
 import fs from 'fs';
-import { spawn, ChildProcess } from 'child_process';
+// Removed: SSH tunnel imports no longer needed
 import { DatabaseAdapter, DatabaseConfig, DatabaseConnectionError } from './base.js';
 import { MemoryType, MemoryMetadata, Memory } from '../service.js';
 import { generateEmbedding } from '../../embeddings.js';
@@ -19,12 +19,11 @@ const { Pool } = pg;
  * PostgreSQL Database Adapter Implementation with pgvector support
  * 
  * Provides PostgreSQL backend for the memory management system with native vector
- * similarity search using pgvector extension. Supports SSH tunnel connections
- * with snowl/snowball fallback strategy.
+ * similarity search using pgvector extension. Connects directly to managed PostgreSQL.
  * 
  * @features
  * - Native pgvector similarity search (cosine distance)
- * - SSH tunnel support with automatic failover
+ * - Direct connection to managed PostgreSQL (Aiven)
  * - JSONB metadata storage with rich query capabilities
  * - Connection pooling for performance
  * - Transactional operations for data consistency
@@ -32,13 +31,11 @@ const { Pool } = pg;
  * @references
  * - pgvector: https://github.com/pgvector/pgvector
  * - PostgreSQL JSONB: https://www.postgresql.org/docs/current/datatype-json.html
- * - SSH Tunneling: https://github.com/mscdex/ssh2
  */
 export class PostgresAdapter implements DatabaseAdapter {
   private pool: pg.Pool | null = null;
   private config: DatabaseConfig;
-  private sshProcess: ChildProcess | null = null;
-  private localPort: number | null = null;
+  // Removed: SSH tunnel properties no longer needed
   private isConnected = false;
 
   constructor(config: DatabaseConfig) {
@@ -49,7 +46,7 @@ export class PostgresAdapter implements DatabaseAdapter {
   }
 
   //
-  // Connection Lifecycle with SSH Tunnel Support
+  // Connection Lifecycle - Direct PostgreSQL Connection
   //
 
   async connect(): Promise<void> {
@@ -58,20 +55,26 @@ export class PostgresAdapter implements DatabaseAdapter {
     // Initialize hash utility
     await initializeHasher();
     
-    if (pgConfig.tunnel) {
-      await this.establishSshTunnel();
-    }
+    // Removed: SSH tunnel logic - connecting directly to managed PostgreSQL
 
     try {
-      // Create connection pool
+      // Create connection pool - direct connection to managed PostgreSQL
       this.pool = new Pool({
-        host: pgConfig.tunnel ? 'localhost' : pgConfig.hosts[0],
-        port: pgConfig.tunnel ? this.localPort! : 5432,
+        host: pgConfig.hosts[0],
+        port: pgConfig.port || 5432,
         database: pgConfig.database,
         user: pgConfig.user,
-        max: 10, // Max connections in pool
+        password: pgConfig.password,
+        ssl: pgConfig.sslmode ? { rejectUnauthorized: false } : false,
+        max: pgConfig.max_connections || 10,
         idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 5000,
+        connectionTimeoutMillis: pgConfig.connection_timeout_ms || 5000,
+      });
+
+      // Add error handler to prevent server crashes on connection drops
+      this.pool.on('error', (err) => {
+        console.error('📊 Database pool error (connection drop):', err.message);
+        // Don't crash the server - just log the error and continue
       });
 
       // Test connection and verify pgvector extension
@@ -117,110 +120,7 @@ export class PostgresAdapter implements DatabaseAdapter {
     }
   }
 
-  private async establishSshTunnel(): Promise<void> {
-    const pgConfig = this.config.postgresql!;
-    const tunnelPort = pgConfig.tunnelPort || 5433;
-    
-    // Try hosts in order (snowl first, then snowball)
-    for (const host of pgConfig.hosts) {
-      try {
-        console.error(`🚇 Attempting SSH tunnel to ${host}...`);
-        
-        this.localPort = tunnelPort;
-        
-        // Use command-line SSH like the Python script (more reliable than ssh2 library)
-        const sshCmd = [
-          'ssh',
-          '-o', 'ControlMaster=no',
-          '-o', 'ServerAliveInterval=30', 
-          '-o', 'ServerAliveCountMax=3',
-          '-o', 'ConnectTimeout=10',
-          '-o', 'BatchMode=yes',  // No password prompts
-          '-N',  // Don't execute remote command
-          '-L', `${tunnelPort}:127.0.0.1:5432`,  // Local:Remote port forwarding
-          host
-        ];
-        
-        // Start SSH tunnel process
-        this.sshProcess = spawn(sshCmd[0], sshCmd.slice(1), {
-          stdio: ['ignore', 'pipe', 'pipe'],
-          detached: false
-        });
-        
-        // Wait for tunnel to establish (like Python script)
-        await new Promise<void>((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            this.cleanupSsh();
-            reject(new Error('SSH tunnel timeout'));
-          }, 15000);
-          
-          // Check if tunnel is ready by testing the port
-          const checkTunnel = async () => {
-            for (let i = 0; i < 30; i++) {  // Wait up to 15 seconds
-              await new Promise(resolve => setTimeout(resolve, 500));
-              
-              try {
-                // Try to connect to the tunnel port (like Python's lsof check)
-                const testProcess = spawn('nc', ['-z', 'localhost', tunnelPort.toString()], {
-                  stdio: 'ignore'
-                });
-                
-                await new Promise<void>((resolveTest, rejectTest) => {
-                  testProcess.on('close', (code) => {
-                    if (code === 0) {
-                      clearTimeout(timeout);
-                      console.error(`✅ SSH tunnel established via ${host} -> localhost:${tunnelPort}`);
-                      resolve();
-                    } else {
-                      rejectTest(new Error('Port not ready'));
-                    }
-                  });
-                });
-                
-                return; // Success!
-              } catch (error) {
-                // Continue checking...
-              }
-            }
-            
-            // If we get here, tunnel failed
-            clearTimeout(timeout);
-            this.cleanupSsh();
-            reject(new Error('SSH tunnel failed to establish'));
-          };
-          
-          checkTunnel();
-          
-          // Handle SSH process errors
-          this.sshProcess!.on('error', (err) => {
-            clearTimeout(timeout);
-            reject(new Error(`SSH process error: ${err.message}`));
-          });
-          
-          this.sshProcess!.on('exit', (code, signal) => {
-            if (code !== null && code !== 0) {
-              clearTimeout(timeout);
-              reject(new Error(`SSH process exited with code ${code}`));
-            }
-          });
-        });
-
-        // If we get here, tunnel succeeded
-        return;
-      } catch (error) {
-        console.error(`❌ SSH tunnel to ${host} failed: ${error}`);
-        this.cleanupSsh();
-        
-        // If this was the last host, throw error
-        if (host === pgConfig.hosts[pgConfig.hosts.length - 1]) {
-          throw new DatabaseConnectionError(
-            `All SSH tunnel attempts failed. Tried: ${pgConfig.hosts.join(', ')}`,
-            'postgresql'
-          );
-        }
-      }
-    }
-  }
+  // Removed: establishSshTunnel() method - no longer needed for direct Aiven connection
 
   async disconnect(): Promise<void> {
     await this.cleanup();
@@ -231,30 +131,11 @@ export class PostgresAdapter implements DatabaseAdapter {
       await this.pool.end();
       this.pool = null;
     }
-    this.cleanupSsh();
+    // Removed: SSH cleanup no longer needed
     this.isConnected = false;
   }
 
-  private cleanupSsh(): void {
-    if (this.sshProcess) {
-      try {
-        // Terminate the SSH process gracefully
-        this.sshProcess.kill('SIGTERM');
-        
-        // Give it a moment to clean up
-        setTimeout(() => {
-          if (this.sshProcess && !this.sshProcess.killed) {
-            this.sshProcess.kill('SIGKILL');
-          }
-        }, 2000);
-        
-        this.sshProcess = null;
-        this.localPort = null;
-      } catch (error) {
-        console.error('Error cleaning up SSH process:', error);
-      }
-    }
-  }
+  // Removed: cleanupSsh() method - no longer needed for direct Aiven connection
 
   async healthCheck(): Promise<boolean> {
     if (!this.pool || !this.isConnected) return false;
