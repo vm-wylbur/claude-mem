@@ -119,13 +119,10 @@ export function generateTagHash(tagName: string): string {
   const normalizedName = tagName.toLowerCase().trim();
   const hashInput = `tag:${normalizedName}`;
   
-  // Generate xxHash64 (returns as hex string)
+  // Generate xxHash64 and return hex directly (no BigInt conversion needed)
   const hashHex = hasher(hashInput);
   
-  // Convert hex to bigint, then back to string for database storage
-  const hashBigInt = BigInt('0x' + hashHex);
-  
-  return hashBigInt.toString();
+  return hashHex;
 }
 
 /**
