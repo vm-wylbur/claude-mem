@@ -61,6 +61,20 @@ A long-term memory storage system for Claude and other LLMs using the Model Cont
 
 2. The server connects via stdio for Cursor compatibility
 
+### Important: Rebuilding After Changes
+
+When you make code changes and want to launch a new Claude instance that uses the updated MCP server:
+
+```bash
+# Always rebuild before starting a new Claude session
+npm run build
+
+# Then launch your new Claude instance
+# The MCP server will use the updated compiled code
+```
+
+**Why this matters**: Claude instances cache the MCP server binary. Without rebuilding, new Claude sessions will use the old version of your code and won't see recent changes like enhanced diagnostics or new tools.
+
 ## Configuration
 
 Claude Memory uses TOML configuration files for flexible setup:
