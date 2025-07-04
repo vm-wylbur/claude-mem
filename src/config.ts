@@ -12,51 +12,21 @@ import { getDatabaseConfigToml, getConfigSummaryToml } from './config-toml.js';
 /**
  * Database Configuration Management
  * 
- * Provides centralized configuration for database selection and connection settings.
- * Supports both SQLite and PostgreSQL backends with environment variable overrides.
- * 
- * Environment Variables:
- * - MCPMEM_DB_TYPE: 'sqlite' | 'postgresql' (default: 'sqlite')
- * - MCPMEM_DB_PATH: SQLite database file path
- * - MCPMEM_PG_HOSTS: Comma-separated PostgreSQL hosts
- * - MCPMEM_PG_DATABASE: PostgreSQL database name
- * - MCPMEM_PG_USER: PostgreSQL username
- * - MCPMEM_PG_PASSWORD: PostgreSQL password
- * - MCPMEM_PG_PORT: PostgreSQL port (default: 5432)
- * - MCPMEM_PG_SSLMODE: PostgreSQL SSL mode
+ * DEPRECATED: Use TOML configuration instead of environment variables.
+ * This function is kept for backward compatibility only.
+ * Use getDatabaseConfigToml() for new code.
  */
 
 export function getDatabaseConfig(): DatabaseConfig {
-  const dbType = (process.env.MCPMEM_DB_TYPE || 'sqlite') as 'sqlite' | 'postgresql';
+  console.warn('⚠️  getDatabaseConfig() is deprecated. Use getDatabaseConfigToml() instead.');
   
-  switch (dbType) {
-    case 'sqlite':
-      return {
-        type: 'sqlite',
-        sqlite: {
-          path: process.env.MCPMEM_DB_PATH || path.join(process.cwd(), 'memory.db')
-        }
-      };
-      
-    case 'postgresql':
-      const pgHosts = process.env.MCPMEM_PG_HOSTS?.split(',') || ['localhost'];
-      
-      return {
-        type: 'postgresql',
-        postgresql: {
-          hosts: pgHosts,
-          database: process.env.MCPMEM_PG_DATABASE || 'defaultdb',
-          user: process.env.MCPMEM_PG_USER || 'postgres',
-          password: process.env.MCPMEM_PG_PASSWORD,
-          port: process.env.MCPMEM_PG_PORT ? parseInt(process.env.MCPMEM_PG_PORT) : 5432,
-          sslmode: process.env.MCPMEM_PG_SSLMODE,
-          // Removed: tunnel property (SSH tunnel support removed)
-        }
-      };
-      
-    default:
-      throw new Error(`Unsupported database type: ${dbType}`);
-  }
+  // Fallback to sqlite for legacy compatibility
+  return {
+    type: 'sqlite',
+    sqlite: {
+      path: path.join(process.cwd(), 'memory.db')
+    }
+  };
 }
 
 /**

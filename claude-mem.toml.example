@@ -17,16 +17,13 @@ backup_path = "~/.local/share/mcp-memory/backups/"
 max_backup_files = 10
 
 [database.postgresql]
-# PostgreSQL connection settings
-hosts = ["snowl", "snowball"]  # Failover order
+# PostgreSQL connection settings - direct connection to managed PostgreSQL
+hosts = ["your-postgres-host.com"]  # Your PostgreSQL host
 database = "claude_mem"
-user = "pball"
-
-# SSH tunnel configuration
-tunnel = true
-tunnel_port = 5433
-ssh_user = "pball"
-ssh_key_path = "~/.ssh/id_rsa"
+user = "your_username"
+password = "your_password"  # Optional: can use .pgpass or other auth
+port = 5432
+sslmode = "require"  # For managed PostgreSQL
 
 # Connection pool settings
 max_connections = 5
