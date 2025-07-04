@@ -13,6 +13,9 @@ import { MemoryOverviewTool } from './tools/memory-overview.js';
 import { StoreDevMemoryTool } from './tools/store-dev-memory.js';
 import { QuickStoreTool } from './tools/quick-store.js';
 import { GetRecentContextTool } from './tools/get-recent-context.js';
+import { ListDevMemoriesTool } from './tools/list-dev-memories.js';
+import { GetDevMemoryTool } from './tools/get-dev-memory.js';
+import { SearchTool } from './tools/search.js';
 
 // Auto-detection utility for memory types
 function detectMemoryType(content: string): MemoryType {
@@ -164,6 +167,9 @@ const memoryOverviewTool = new MemoryOverviewTool(dbService);
 const storeDevMemoryTool = new StoreDevMemoryTool(dbService, storeMemoryWithTags);
 const quickStoreTool = new QuickStoreTool(dbService, storeMemoryWithTags, detectMemoryType, generateSmartTags);
 const getRecentContextTool = new GetRecentContextTool(dbService);
+const listDevMemoriesTool = new ListDevMemoriesTool(dbService);
+const getDevMemoryTool = new GetDevMemoryTool(dbService, parseHexToHash, isValidHashId, formatHashForDisplay);
+const searchTool = new SearchTool(dbService, formatHashForDisplay);
 
 // Add comprehensive overview tool - the go-to starting point for new Claude sessions
 server.tool(
@@ -248,45 +254,8 @@ server.tool(
         limit: z.number().optional().describe('Maximum number of memories to return (default: 10, helps with performance)'),
         tag: z.string().optional().describe('Filter by tag (TODO: not yet implemented)')
     },
-    async ({ limit = 10, tag }) => {
-        try {
-            // Pass limit directly to database for efficient pagination
-            const memories = await dbService.getDevMemories(limit);
-
-            if (tag) {
-                // TODO: Implement proper tag filtering using database queries
-                console.error(`Note: Tag filtering for "${tag}" not yet implemented in list operation`);
-                // For now, filter in memory but only on the already-limited results
-                const filtered = memories.filter(memory => {
-                    // This is a placeholder - proper implementation should use SQL filtering
-                    return true; // TODO: implement tag filtering at DB level
-                });
-                return {
-                    content: [{
-                        type: 'text',
-                        text: JSON.stringify(filtered.map(memory => ({
-                            ...memory,
-                            memory_id: formatHashForDisplay(memory.memory_id)
-                        })), null, 2)
-                    }]
-                };
-            }
-            
-            // Format memories with hex IDs for display
-            const displayMemories = memories.map(memory => ({
-                ...memory,
-                memory_id: formatHashForDisplay(memory.memory_id)
-            }));
-            
-            return {
-                content: [{
-                    type: 'text',
-                    text: JSON.stringify(displayMemories, null, 2)
-                }]
-            };
-        } catch (error) {
-            return createErrorResponse(error, 'list-dev-memories');
-        }
+    async (params) => {
+        return listDevMemoriesTool.handle(params);
     }
 );
 
@@ -295,53 +264,10 @@ server.tool(
     'get-dev-memory',
     'Retrieve a specific development memory by its hash ID. IDs are shown in hex format (e.g., a1b2c3d4e5f67890).',
     {
-memoryId: z.string().describe('Hash ID of the memory to retrieve (hex format like a1b2c3d4e5f67890)')
+        memoryId: z.string().describe('Hash ID of the memory to retrieve (hex format like a1b2c3d4e5f67890)')
     },
-    async ({ memoryId }) => {
-        try {
-            // Convert hex format to hash ID for database lookup
-            let hashId: string;
-            try {
-                hashId = parseHexToHash(memoryId);
-                if (!isValidHashId(hashId)) {
-                    throw new Error('Invalid hash format');
-                }
-            } catch {
-                return {
-                    isError: true,
-                    content: [{
-                        type: 'text',
-                        text: `Invalid memory ID format: ${memoryId}. Expected hex format like a1b2c3d4e5f67890`
-                    }]
-                };
-            }
-            
-            const memory = await dbService.getMemory(hashId);
-            if (!memory) {
-                return {
-                    isError: true,
-                    content: [{
-                        type: 'text',
-                        text: `Memory with ID ${memoryId} not found`
-                    }]
-                };
-            }
-
-            // Format memory with hex ID for display
-            const displayMemory = {
-                ...memory,
-                memory_id: formatHashForDisplay(memory.memory_id)
-            };
-
-            return {
-                content: [{
-                    type: 'text',
-                    text: JSON.stringify(displayMemory, null, 2)
-                }]
-            };
-        } catch (error) {
-            return createErrorResponse(error, 'get-dev-memory');
-        }
+    async (params) => {
+        return getDevMemoryTool.handle(params);
     }
 );
 
@@ -352,46 +278,8 @@ server.tool(
     {
         searchTerm: z.string().describe('Text to search for - finds semantically similar memories using AI embeddings')
     },
-    async ({ searchTerm }) => {
-        try {
-            console.error('Searching for:', searchTerm);
-            const memories = await dbService.findSimilarMemories(searchTerm, 5);
-            console.error('Found memories:', memories.length);
-            
-            if (!memories.length) {
-                return {
-                    content: [{
-                        type: 'text',
-                        text: 'No similar memories found.'
-                    }]
-                };
-            }
-
-            const formattedResults = memories.map(memory => {
-                const metadata = typeof memory.metadata === 'string' 
-                    ? JSON.parse(memory.metadata) 
-                    : memory.metadata;
-                return {
-                    id: formatHashForDisplay(memory.memory_id),  // Display as hex
-                    similarity: `${((memory.similarity || 0) * 100).toFixed(1)}%`,
-                    content: memory.content,
-                    type: memory.content_type,
-                    status: metadata.implementation_status,
-                    keyDecisions: metadata.key_decisions,
-                    created: memory.created_at
-                };
-            });
-
-            return {
-                content: [{
-                    type: 'text',
-                    text: JSON.stringify(formattedResults, null, 2)
-                }]
-            };
-        } catch (error) {
-            console.error('Search error:', error);
-            return createErrorResponse(error, 'search');
-        }
+    async (params) => {
+        return searchTool.handle(params);
     }
 );
 
