@@ -4,6 +4,14 @@ import Database from 'better-sqlite3';
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
 const MODEL = 'nomic-embed-text';
 
+export interface OllamaHealthInfo {
+  connected: boolean;
+  host: string;
+  model: string;
+  lastEmbeddingTest?: Date;
+  error?: string;
+}
+
 export interface EmbeddingResponse {
     embedding: number[];
 }
@@ -106,4 +114,50 @@ export function findSimilarMemories(
         .filter(s => s.similarity >= similarityThreshold)
         .sort((a, b) => b.similarity - a.similarity)
         .slice(0, limit);
-} 
+}
+
+/**
+ * Check Ollama health and model availability
+ */
+export async function checkOllamaHealth(): Promise<OllamaHealthInfo> {
+    const healthInfo: OllamaHealthInfo = {
+        connected: false,
+        host: OLLAMA_HOST,
+        model: MODEL
+    };
+
+    try {
+        // Test basic connection
+        const response = await fetch(`${OLLAMA_HOST}/api/tags`, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Ollama not responding: ${response.statusText}`);
+        }
+
+        const data = await response.json() as any;
+        const models = data.models || [];
+        const hasModel = models.some((m: any) => m.name.includes(MODEL));
+
+        if (!hasModel) {
+            healthInfo.error = `Model ${MODEL} not found. Available models: ${models.map((m: any) => m.name).join(', ')}`;
+            return healthInfo;
+        }
+
+        // Test embedding generation with a simple phrase
+        try {
+            await generateEmbedding('test');
+            healthInfo.connected = true;
+            healthInfo.lastEmbeddingTest = new Date();
+        } catch (embeddingError) {
+            healthInfo.error = `Embedding test failed: ${embeddingError}`;
+        }
+
+    } catch (error) {
+        healthInfo.error = `Connection failed: ${error}`;
+    }
+
+    return healthInfo;
+}

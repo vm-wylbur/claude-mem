@@ -8,7 +8,7 @@
 import pg from 'pg';
 import fs from 'fs';
 // Removed: SSH tunnel imports no longer needed
-import { DatabaseAdapter, DatabaseConfig, DatabaseConnectionError } from './base.js';
+import { DatabaseAdapter, DatabaseConfig, DatabaseConnectionError, DatabaseConnectionInfo } from './base.js';
 import { MemoryType, MemoryMetadata, Memory } from '../service.js';
 import { generateEmbedding } from '../../embeddings.js';
 import { generateMemoryHash, generateTagHash, initializeHasher } from '../../utils/hash.js';
@@ -151,6 +151,56 @@ export class PostgresAdapter implements DatabaseAdapter {
     } catch {
       return false;
     }
+  }
+
+  async getDatabaseInfo(): Promise<DatabaseConnectionInfo> {
+    const pgConfig = this.config.postgresql!;
+    
+    // Basic connection info
+    const info: DatabaseConnectionInfo = {
+      type: 'postgresql',
+      host: pgConfig.hosts[0],
+      port: pgConfig.port || 5432,
+      database: pgConfig.database,
+      lastHealthCheck: new Date(),
+      isConnected: this.isConnected
+    };
+
+    // Get detailed info if connected
+    if (this.pool && this.isConnected) {
+      try {
+        const client = await this.pool.connect();
+        try {
+          // Get connection pool stats
+          info.connectionPool = {
+            totalConnections: this.pool.totalCount,
+            activeConnections: this.pool.totalCount - this.pool.idleCount,
+            idleConnections: this.pool.idleCount,
+            waitingClients: this.pool.waitingCount
+          };
+
+          // Get PostgreSQL version
+          const versionResult = await client.query('SELECT version()');
+          const versionString = versionResult.rows[0]?.version || '';
+          const versionMatch = versionString.match(/PostgreSQL (\d+\.\d+)/);
+          info.postgresVersion = versionMatch ? versionMatch[1] : 'unknown';
+
+          // Get pgvector version
+          const pgvectorResult = await client.query(`
+            SELECT extversion FROM pg_extension WHERE extname = 'vector'
+          `);
+          info.pgvectorVersion = pgvectorResult.rows[0]?.extversion || 'not installed';
+
+        } finally {
+          client.release();
+        }
+      } catch (error) {
+        // If we can't get detailed info, mark as unhealthy
+        info.isConnected = false;
+      }
+    }
+
+    return info;
   }
 
   //

@@ -6,7 +6,7 @@
 // mcp-long-term-memory-pg/src/db/service-new.ts
 
 import { z } from 'zod';
-import { DatabaseAdapter } from './adapters/base.js';
+import { DatabaseAdapter, DatabaseConnectionInfo } from './adapters/base.js';
 
 // Re-export types from base for backwards compatibility
 export const MemoryType = z.enum(['conversation', 'code', 'decision', 'reference']);
@@ -262,6 +262,13 @@ export class DatabaseService {
      */
     async healthCheck(): Promise<boolean> {
         return this.adapter.healthCheck();
+    }
+
+    /**
+     * Get real-time database connection diagnostics
+     */
+    async getDatabaseInfo(): Promise<DatabaseConnectionInfo> {
+        return this.adapter.getDatabaseInfo();
     }
 
     /**

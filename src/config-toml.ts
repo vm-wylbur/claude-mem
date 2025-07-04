@@ -9,7 +9,7 @@ import * as toml from 'toml';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { DatabaseConfig } from './db/adapters/base.js';
+import { DatabaseConfig, ConfigurationInfo } from './db/adapters/base.js';
 
 interface TomlConfig {
   database: {
@@ -207,4 +207,59 @@ export async function getDatabaseConfigToml(): Promise<DatabaseConfig> {
 export function getConfigSummaryToml(): string {
   const loader = TomlConfigLoader.getInstance();
   return loader.getConfigSummary();
+}
+
+/**
+ * Get detailed configuration information for diagnostics
+ */
+export function getConfigurationInfo(): ConfigurationInfo {
+  const loader = TomlConfigLoader.getInstance();
+  
+  // Determine config source
+  let source: 'toml' | 'env' | 'default';
+  let configPath: string | undefined;
+  
+  if ((loader as any).config) {
+    source = 'toml';
+    // Check the standard config paths
+    const configPaths = [
+      path.join(os.homedir(), '.config', 'claude-mem', 'claude-mem.toml'),
+      path.join(process.cwd(), 'claude-mem.toml')
+    ];
+    
+    for (const testPath of configPaths) {
+      if (fs.existsSync(testPath)) {
+        configPath = testPath;
+        break;
+      }
+    }
+  } else if (process.env.MCPMEM_DB_TYPE) {
+    source = 'env';
+  } else {
+    source = 'default';
+  }
+  
+  // Detect environment variable overrides
+  const overrides: string[] = [];
+  const envVars = [
+    'MCPMEM_DB_TYPE',
+    'MCPMEM_PG_HOSTS', 
+    'MCPMEM_PG_DATABASE',
+    'MCPMEM_PG_USER',
+    'MCPMEM_PG_PASSWORD',
+    'MCPMEM_PG_PORT',
+    'MCPMEM_PG_SSLMODE'
+  ];
+  
+  for (const envVar of envVars) {
+    if (process.env[envVar]) {
+      overrides.push(envVar);
+    }
+  }
+  
+  return {
+    source,
+    configPath,
+    overrides
+  };
 }

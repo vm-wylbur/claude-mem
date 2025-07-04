@@ -5,6 +5,8 @@
 import { BaseMCPTool, MCPResponse } from './base-tool.js';
 import { formatHashForDisplay } from '../utils/hash.js';
 import { buildInfo } from '../buildInfo.js';
+import { getConfigurationInfo } from '../config-toml.js';
+import { checkOllamaHealth } from '../embeddings.js';
 
 export class MemoryOverviewTool extends BaseMCPTool {
   async handle(): Promise<MCPResponse> {
@@ -13,13 +15,49 @@ export class MemoryOverviewTool extends BaseMCPTool {
       const recentMemories = await this.dbService.getDevMemories(5);
       const totalMemories = await this.dbService.getDevMemories(); // Get total count
       
-      // Build comprehensive overview
+      // Get real-time diagnostic information
+      const [databaseInfo, configInfo, ollamaHealth] = await Promise.all([
+        this.dbService.getDatabaseInfo(),
+        Promise.resolve(getConfigurationInfo()),
+        checkOllamaHealth()
+      ]);
+      
+      // Build comprehensive overview with real diagnostics
       const overview = {
         "🧠 Memory System Overview": {
-          "database": "PostgreSQL with pgvector for semantic search",
           "total_memories": totalMemories.length,
-          "connection": "SSH tunnel to snowl/snowball",
           "id_system": "Hash-based IDs (64-bit) for distributed uniqueness"
+        },
+        
+        "🔗 Database Connection (LIVE)": {
+          "type": databaseInfo.type,
+          "host": databaseInfo.host,
+          "port": databaseInfo.port,
+          "database": databaseInfo.database,
+          "status": databaseInfo.isConnected ? "🟢 Connected" : "🔴 Disconnected",
+          "postgres_version": databaseInfo.postgresVersion,
+          "pgvector_version": databaseInfo.pgvectorVersion,
+          "connection_pool": databaseInfo.connectionPool ? {
+            "total": databaseInfo.connectionPool.totalConnections,
+            "active": databaseInfo.connectionPool.activeConnections,
+            "idle": databaseInfo.connectionPool.idleConnections,
+            "waiting": databaseInfo.connectionPool.waitingClients
+          } : null,
+          "last_check": databaseInfo.lastHealthCheck
+        },
+        
+        "⚙️ Configuration": {
+          "source": configInfo.source,
+          "config_file": configInfo.configPath || "N/A",
+          "env_overrides": configInfo.overrides.length > 0 ? configInfo.overrides : "None"
+        },
+        
+        "🤖 Ollama Service": {
+          "status": ollamaHealth.connected ? "🟢 Connected" : "🔴 Disconnected",
+          "host": ollamaHealth.host,
+          "model": ollamaHealth.model,
+          "last_test": ollamaHealth.lastEmbeddingTest || "Never",
+          "error": ollamaHealth.error || "None"
         },
         
         "🔧 Build Info": {
@@ -32,13 +70,15 @@ export class MemoryOverviewTool extends BaseMCPTool {
         
         "🛠️ Available Tools": {
           "memory-overview": "📊 This tool - comprehensive system overview",
-          "search": "🔍 AI-powered semantic search using pgvector embeddings",
+          "search": "🔍 Basic semantic search using vector embeddings",
           "search-enhanced": "🎯 Advanced search with filtering, scoring, and date ranges",
-          "store-dev-memory": "💾 Store new memories with metadata and tags",
+          "store-dev-memory": "💾 Store detailed memories with metadata and tags",
           "quick-store": "⚡ Store memories with auto-detection of type and smart tagging",
           "get-recent-context": "🕒 Get recent memories for ongoing work context",
           "list-dev-memories": "📋 List recent memories with pagination",
-          "get-dev-memory": "🎯 Retrieve specific memory by hash ID"
+          "get-dev-memory": "🎯 Retrieve specific memory by hash ID",
+          "get-all-tags": "🏷️ Browse available tags for discovery",
+          "list-memories-by-tag": "📂 Find memories by specific tags"
         },
         
         "🔍 Quick Start Examples": {

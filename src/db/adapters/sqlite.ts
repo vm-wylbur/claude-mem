@@ -6,7 +6,7 @@
 // mcp-long-term-memory-pg/src/db/adapters/sqlite.ts
 
 import Database from 'better-sqlite3';
-import { DatabaseAdapter, DatabaseConfig, DatabaseConnectionError } from './base.js';
+import { DatabaseAdapter, DatabaseConfig, DatabaseConnectionError, DatabaseConnectionInfo } from './base.js';
 import { MemoryType, MemoryMetadata, Memory } from '../service.js';
 import { generateEmbedding, storeEmbedding } from '../../embeddings.js';
 import { generateMemoryHash, generateTagHash, initializeHasher } from '../../utils/hash.js';
@@ -88,6 +88,54 @@ export class SqliteAdapter implements DatabaseAdapter {
     } catch {
       return false;
     }
+  }
+
+  async getDatabaseInfo(): Promise<DatabaseConnectionInfo> {
+    const sqliteConfig = this.config.sqlite!;
+    
+    // Basic connection info
+    const info: DatabaseConnectionInfo = {
+      type: 'sqlite',
+      database: sqliteConfig.path,
+      lastHealthCheck: new Date(),
+      isConnected: this.isConnected
+    };
+
+    // Get detailed info if connected
+    if (this.db && this.isConnected) {
+      try {
+        // SQLite doesn't have connection pools, but we can get basic stats
+        const tableCountResult = this.db.prepare(`
+          SELECT COUNT(*) as count FROM sqlite_master 
+          WHERE type='table' AND name NOT LIKE 'sqlite_%'
+        `).get() as { count: number };
+        
+        const memoryCountResult = this.db.prepare(`
+          SELECT COUNT(*) as count FROM memories
+        `).get() as { count: number };
+
+        // SQLite version
+        const versionResult = this.db.prepare('SELECT sqlite_version()').get() as { 'sqlite_version()': string };
+        
+        // Add SQLite-specific info (no connection pool for SQLite)
+        info.connectionPool = {
+          totalConnections: 1,
+          activeConnections: this.isConnected ? 1 : 0,
+          idleConnections: 0,
+          waitingClients: 0
+        };
+
+        // Store additional SQLite info in unused postgres field for compatibility
+        info.postgresVersion = `SQLite ${versionResult['sqlite_version()']}`;
+        info.pgvectorVersion = `In-memory cosine similarity (${memoryCountResult.count} memories)`;
+
+      } catch (error) {
+        // If we can't get detailed info, mark as unhealthy
+        info.isConnected = false;
+      }
+    }
+
+    return info;
   }
 
   //

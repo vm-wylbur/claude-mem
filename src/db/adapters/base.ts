@@ -31,6 +31,42 @@ import { MemoryType, MemoryMetadata, Memory } from '../service.js';
  * @date 2025-07-01
  * @license (c) HRDAG, 2025, GPL-2 or newer
  */
+// Diagnostic information interfaces
+export interface DatabaseConnectionInfo {
+  type: 'postgresql' | 'sqlite';
+  host?: string;
+  port?: number;
+  database: string;
+  connectionPool?: {
+    totalConnections: number;
+    activeConnections: number;
+    idleConnections: number;
+    waitingClients: number;
+  };
+  pgvectorVersion?: string;
+  postgresVersion?: string;
+  lastHealthCheck: Date;
+  isConnected: boolean;
+}
+
+export interface ConfigurationInfo {
+  source: 'toml' | 'env' | 'default';
+  configPath?: string;
+  overrides: string[];
+}
+
+export interface SystemHealthInfo {
+  database: DatabaseConnectionInfo;
+  configuration: ConfigurationInfo;
+  ollama?: {
+    connected: boolean;
+    host: string;
+    model: string;
+    lastEmbeddingTest?: Date;
+    error?: string;
+  };
+}
+
 export interface DatabaseAdapter {
   //
   // Connection Lifecycle Management
@@ -46,6 +82,11 @@ export interface DatabaseAdapter {
    * Close database connection and cleanup resources
    */
   disconnect(): Promise<void>;
+  
+  /**
+   * Get real-time database connection diagnostics
+   */
+  getDatabaseInfo(): Promise<DatabaseConnectionInfo>;
   
   /**
    * Check if database connection is healthy
