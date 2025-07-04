@@ -10,6 +10,7 @@ import { formatHashForDisplay, parseHexToHash, isValidHashId } from './utils/has
 import { createErrorResponse } from './utils/error-response.js';
 import { buildInfo } from './buildInfo.js';
 import { MemoryOverviewTool } from './tools/memory-overview.js';
+import { StoreDevMemoryTool } from './tools/store-dev-memory.js';
 
 // Auto-detection utility for memory types
 function detectMemoryType(content: string): MemoryType {
@@ -158,6 +159,7 @@ const server = new McpServer({
 
 // Initialize tools
 const memoryOverviewTool = new MemoryOverviewTool(dbService);
+const storeDevMemoryTool = new StoreDevMemoryTool(dbService, storeMemoryWithTags);
 
 // Add comprehensive overview tool - the go-to starting point for new Claude sessions
 server.tool(
@@ -182,26 +184,8 @@ server.tool(
         filesCreated: z.array(z.string()).optional().describe('New files created or existing files modified'),
         tags: z.array(z.string()).optional().describe('Tags for categorization and filtering')
     },
-    async ({ content, type, keyDecisions, status, codeChanges, filesCreated, tags }) => {
-        try {
-            // Use shared storage function
-            const memoryId = await storeMemoryWithTags(content, type as MemoryType, {
-                key_decisions: keyDecisions,
-                implementation_status: status,
-                code_changes: codeChanges,
-                files_created: filesCreated,
-                date: new Date().toISOString()
-            }, tags);
-
-            return {
-                content: [{
-                    type: 'text',
-                    text: `Successfully stored memory with ID: ${formatHashForDisplay(memoryId)}`
-                }]
-            };
-        } catch (error) {
-            return createErrorResponse(error, 'store-dev-memory');
-        }
+    async (params) => {
+        return storeDevMemoryTool.handle(params);
     }
 );
 
