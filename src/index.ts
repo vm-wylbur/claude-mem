@@ -7,6 +7,7 @@ import { createDatabaseAdapter, createDatabaseAdapterToml, getConfigSummary } fr
 import { getConfigSummaryToml } from './config-toml.js';
 import { storeDevProgress, storeInitialProgress } from './dev-memory.js';
 import { formatHashForDisplay, parseHexToHash, isValidHashId } from './utils/hash.js';
+import { createErrorResponse } from './utils/error-response.js';
 import { buildInfo } from './buildInfo.js';
 
 // Auto-detection utility for memory types
@@ -238,14 +239,7 @@ server.tool(
                 }]
             };
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            return {
-                isError: true,
-                content: [{
-                    type: 'text',
-                    text: `Error generating overview: ${errorMessage}`
-                }]
-            };
+            return createErrorResponse(error, 'memory-overview');
         }
     }
 );
@@ -281,14 +275,7 @@ server.tool(
                 }]
             };
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            return {
-                isError: true,
-                content: [{
-                    type: 'text',
-                    text: `Error storing memory: ${errorMessage}`
-                }]
-            };
+            return createErrorResponse(error, 'store-dev-memory');
         }
     }
 );
@@ -359,14 +346,7 @@ server.tool(
                 }]
             };
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            return {
-                isError: true,
-                content: [{
-                    type: 'text',
-                    text: `Error storing memory: ${errorMessage}`
-                }]
-            };
+            return createErrorResponse(error, 'quick-store');
         }
     }
 );
@@ -494,14 +474,7 @@ server.tool(
                 }]
             };
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            return {
-                isError: true,
-                content: [{
-                    type: 'text',
-                    text: `Error retrieving recent context: ${errorMessage}`
-                }]
-            };
+            return createErrorResponse(error, 'get-recent-context');
         }
     }
 );
@@ -551,14 +524,7 @@ server.tool(
                 }]
             };
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            return {
-                isError: true,
-                content: [{
-                    type: 'text',
-                    text: `Error listing memories: ${errorMessage}`
-                }]
-            };
+            return createErrorResponse(error, 'list-dev-memories');
         }
     }
 );
@@ -613,14 +579,7 @@ memoryId: z.string().describe('Hash ID of the memory to retrieve (hex format lik
                 }]
             };
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            return {
-                isError: true,
-                content: [{
-                    type: 'text',
-                    text: `Error retrieving memory: ${errorMessage}`
-                }]
-            };
+            return createErrorResponse(error, 'get-dev-memory');
         }
     }
 );
@@ -670,14 +629,7 @@ server.tool(
             };
         } catch (error) {
             console.error('Search error:', error);
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            return {
-                isError: true,
-                content: [{
-                    type: 'text',
-                    text: `Error searching memories: ${errorMessage}`
-                }]
-            };
+            return createErrorResponse(error, 'search');
         }
     }
 );
@@ -819,14 +771,7 @@ server.tool(
                 }]
             };
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            return {
-                isError: true,
-                content: [{
-                    type: 'text',
-                    text: `Error in enhanced search: ${errorMessage}`
-                }]
-            };
+            return createErrorResponse(error, 'enhanced search');
         }
     }
 );
@@ -856,14 +801,7 @@ server.tool(
                 }]
             };
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            return {
-                isError: true,
-                content: [{
-                    type: 'text',
-                    text: `Error retrieving tags: ${errorMessage}`
-                }]
-            };
+            return createErrorResponse(error, 'retrieving tags');
         }
     }
 );
@@ -902,14 +840,7 @@ server.tool(
                 }]
             };
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            return {
-                isError: true,
-                content: [{
-                    type: 'text',
-                    text: `Error listing memories by tag: ${errorMessage}`
-                }]
-            };
+            return createErrorResponse(error, 'listing memories by tag');
         }
     }
 );
