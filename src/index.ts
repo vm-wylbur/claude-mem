@@ -19,6 +19,7 @@ import { SearchTool } from './tools/search.js';
 import { SearchEnhancedTool } from './tools/search-enhanced.js';
 import { GetAllTagsTool } from './tools/get-all-tags.js';
 import { ListMemoriesByTagTool } from './tools/list-memories-by-tag.js';
+import { AnalyzeMemoryQualityTool } from './tools/analyze-memory-quality.js';
 
 // Auto-detection utility for memory types
 function detectMemoryType(content: string): MemoryType {
@@ -160,7 +161,8 @@ const server = new McpServer({
             'search': true,
             'search-enhanced': true,
             'get-all-tags': true,
-            'list-memories-by-tag': true
+            'list-memories-by-tag': true,
+            'analyze-memory-quality': true
         }
     }
 });
@@ -176,6 +178,7 @@ const searchTool = new SearchTool(dbService, formatHashForDisplay);
 const searchEnhancedTool = new SearchEnhancedTool(dbService, formatHashForDisplay);
 const getAllTagsTool = new GetAllTagsTool(dbService);
 const listMemoriesByTagTool = new ListMemoriesByTagTool(dbService, formatHashForDisplay);
+const analyzeMemoryQualityTool = new AnalyzeMemoryQualityTool(dbService);
 
 // Add comprehensive overview tool - the go-to starting point for new Claude sessions
 server.tool(
@@ -331,6 +334,22 @@ server.tool(
     },
     async (params) => {
         return listMemoriesByTagTool.handle(params);
+    }
+);
+
+// Add memory quality analyzer tool
+server.tool(
+    'analyze-memory-quality',
+    'Analyze memory quality by detecting outdated code references, broken file paths, duplicates, and inconsistent information. Provides quality scores and actionable recommendations.',
+    {
+        memoryId: z.string().optional().describe('Analyze specific memory by ID'),
+        projectId: z.string().optional().describe('Analyze all memories in project'),
+        codebaseRoot: z.string().optional().describe('Path to codebase for reality checking'),
+        includeCodeCheck: z.boolean().optional().default(true).describe('Whether to check against current code'),
+        limit: z.number().optional().default(50).describe('Max memories to analyze')
+    },
+    async (params) => {
+        return analyzeMemoryQualityTool.handle(params);
     }
 );
 
