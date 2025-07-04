@@ -61,7 +61,7 @@ function detectMemoryType(content: string): MemoryType {
 }
 
 // Generate smart tags based on content
-function generateSmartTags(content: string, type: MemoryType): string[] {
+async function generateSmartTags(content: string, type: MemoryType): Promise<string[]> {
     const tags: string[] = [];
     const lowerContent = content.toLowerCase();
     
@@ -83,7 +83,7 @@ function generateSmartTags(content: string, type: MemoryType): string[] {
     
     // Status/action tags
     const actionPatterns = {
-        'bug-fix': /\b(fix|bug|error|issue|problem|broken)\b/,
+        'bugfix': /\b(fix|bug|error|issue|problem|broken)\b/,
         'feature': /\b(new feature|add|implement|create|build)\b/,
         'refactor': /\b(refactor|cleanup|reorganize|improve)\b/,
         'performance': /\b(performance|optimize|speed|slow|fast)\b/,
@@ -105,8 +105,12 @@ function generateSmartTags(content: string, type: MemoryType): string[] {
         }
     }
     
+    // Filter out invalid tag names before returning
+    const { isValidTagName } = await import('./utils/hash.js');
+    const validTags = tags.filter(tag => isValidTagName(tag));
+    
     // Limit to most relevant tags
-    return [...new Set(tags)].slice(0, 6);
+    return [...new Set(validTags)].slice(0, 6);
 }
 
 // Load environment variables
@@ -246,7 +250,7 @@ server.tool(
     }
 );
 
-// Add tool to store development progress
+// Add tool to store development progress (uses shared storage function)
 server.tool(
     'store-dev-memory',
     'Store a new development memory with content, decisions, and code changes. Supports semantic search via pgvector.',
@@ -261,17 +265,14 @@ server.tool(
     },
     async ({ content, type, keyDecisions, status, codeChanges, filesCreated, tags }) => {
         try {
-            const memoryId = await storeDevProgress(dbService, content, type as MemoryType, {
+            // Use shared storage function
+            const memoryId = await storeMemoryWithTags(content, type as MemoryType, {
                 key_decisions: keyDecisions,
                 implementation_status: status,
                 code_changes: codeChanges,
                 files_created: filesCreated,
                 date: new Date().toISOString()
-            });
-
-            if (tags) {
-                await dbService.addMemoryTags(memoryId, tags);
-            }
+            }, tags);
 
             return {
                 content: [{
@@ -292,7 +293,23 @@ server.tool(
     }
 );
 
-// Add quick-store tool with auto-detection
+// Shared memory storage function to avoid duplication
+async function storeMemoryWithTags(
+    content: string, 
+    type: MemoryType, 
+    metadata: any, 
+    tags?: string[]
+): Promise<string> {
+    const memoryId = await storeDevProgress(dbService, content, type, metadata);
+    
+    if (tags && tags.length > 0) {
+        await dbService.addMemoryTags(memoryId, tags);
+    }
+    
+    return memoryId;
+}
+
+// Add quick-store tool with auto-detection (wraps shared storage logic)
 server.tool(
     'quick-store',
     'Store a memory with automatic type detection and smart tagging. Just provide content - the system will detect type and generate relevant tags.',
@@ -308,7 +325,7 @@ server.tool(
             const detectedType = type || detectMemoryType(content);
             
             // Generate smart tags
-            const autoTags = generateSmartTags(content, detectedType);
+            const autoTags = await generateSmartTags(content, detectedType);
             
             // Combine auto-generated tags with user-provided ones
             const allTags = [...new Set([...autoTags, ...tags])];
@@ -320,17 +337,12 @@ server.tool(
                 keyDecisions = decisionMatches?.map(d => d.trim()) || undefined;
             }
             
-            // Store the memory
-            const memoryId = await storeDevProgress(dbService, content, detectedType, {
+            // Use shared storage function
+            const memoryId = await storeMemoryWithTags(content, detectedType, {
                 implementation_status: status,
                 key_decisions: keyDecisions,
                 date: new Date().toISOString()
-            });
-
-            // Add tags
-            if (allTags.length > 0) {
-                await dbService.addMemoryTags(memoryId, allTags);
-            }
+            }, allTags);
 
             return {
                 content: [{
