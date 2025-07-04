@@ -44,8 +44,9 @@ export function generateMemoryHash(content: string, contentType: string): string
   // This ensures same content with different types gets different IDs
   const hashInput = `${content}:${contentType}`;
   
-  // Generate xxHash64 hex string directly
-  const hashHex = hasher(hashInput);
+  // Generate xxHash64 and convert to hex string for consistency
+  const hashBigInt = hasher(hashInput);
+  const hashHex = hashBigInt.toString(16);
   
   return hashHex;
 }
@@ -53,22 +54,16 @@ export function generateMemoryHash(content: string, contentType: string): string
 /**
  * Format a BIGINT hash ID as hex string for display
  * 
- * @param hashId - BIGINT hash ID as string
- * @returns Hex-formatted string (e.g., "a1b2c3d4e5f67890")
+ * @param hashId - Hex hash string  
+ * @returns 16-character padded hex string
  */
-export function formatHashForDisplay(hashId: string | bigint | null | undefined): string {
+export function formatHashForDisplay(hashId: string | null | undefined): string {
   if (hashId === null || hashId === undefined) {
-    console.error('formatHashForDisplay received null/undefined hashId:', hashId);
-    return '0000000000000000'; // Return a default hex value
+    return '0000000000000000';
   }
   
-  try {
-    const bigintValue = typeof hashId === 'string' ? BigInt(hashId) : hashId;
-    return bigintValue.toString(16).padStart(16, '0');
-  } catch (error) {
-    console.error('Error formatting hash for display:', error, 'hashId:', hashId);
-    return '0000000000000000'; // Return a default hex value
-  }
+  // SIMPLE: Always treat as hex, pad to 16 chars, done.
+  return hashId.toLowerCase().padStart(16, '0');
 }
 
 /**
@@ -86,16 +81,13 @@ export function parseHexToHash(hexHash: string): string {
  * Validate that a hash ID is properly formatted
  * 
  * @param hashId - Hash ID to validate
- * @returns true if valid BIGINT hash
+ * @returns true if valid hex hash
  */
 export function isValidHashId(hashId: string): boolean {
-  try {
-    const bigintValue = BigInt(hashId);
-    // Ensure it's a positive 64-bit integer
-    return bigintValue >= 0n && bigintValue <= 0xffffffffffffffffn;
-  } catch {
-    return false;
-  }
+  if (!hashId || typeof hashId !== 'string') return false;
+  
+  // SIMPLE: Must be valid hex characters, any reasonable length
+  return /^[0-9a-f]+$/i.test(hashId);
 }
 
 /**
@@ -117,8 +109,9 @@ export function generateTagHash(tagName: string): string {
   const normalizedName = tagName.toLowerCase().trim();
   const hashInput = `tag:${normalizedName}`;
   
-  // Generate xxHash64 hex string directly
-  const hashHex = hasher(hashInput);
+  // Generate xxHash64 and convert to hex string for consistency with memory hashes
+  const hashBigInt = hasher(hashInput);
+  const hashHex = hashBigInt.toString(16);
   
   return hashHex;
 }
@@ -142,6 +135,9 @@ export function isValidTagName(tagName: string): boolean {
   
   // No control characters or problematic characters
   if (/[\x00-\x1f\x7f-\x9f]/.test(trimmed)) return false;
+  
+  // No hyphens (cause database constraint issues)
+  if (trimmed.includes('-')) return false;
   
   return true;
 }

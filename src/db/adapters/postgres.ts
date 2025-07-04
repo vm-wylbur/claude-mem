@@ -161,7 +161,7 @@ export class PostgresAdapter implements DatabaseAdapter {
     content: string,
     type: MemoryType,
     metadata: MemoryMetadata,
-    projectId: number
+    projectId: string
   ): Promise<string> {
     if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
 
@@ -217,7 +217,7 @@ export class PostgresAdapter implements DatabaseAdapter {
     }
   }
 
-  async getProjectMemories(projectId: number, limit?: number): Promise<Memory[]> {
+  async getProjectMemories(projectId: string, limit?: number): Promise<Memory[]> {
     if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
 
     const client = await this.pool.connect();
@@ -231,7 +231,7 @@ export class PostgresAdapter implements DatabaseAdapter {
       const params = [projectId];
       if (limit) {
         query += ` LIMIT $2`;
-        params.push(limit);
+        params.push(limit.toString());
       }
 
       const result = await client.query(query, params);
@@ -248,7 +248,7 @@ export class PostgresAdapter implements DatabaseAdapter {
   async findSimilarMemories(
     content: string,
     limit: number,
-    projectId?: number
+    projectId?: string
   ): Promise<Memory[]> {
     if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
 
@@ -283,7 +283,7 @@ export class PostgresAdapter implements DatabaseAdapter {
 
   async searchByMetadata(
     query: Record<string, any>,
-    projectId?: number
+    projectId?: string
   ): Promise<Memory[]> {
     if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
 
@@ -339,16 +339,32 @@ export class PostgresAdapter implements DatabaseAdapter {
   // Project Management
   //
 
-  async createProject(name: string, description?: string): Promise<number> {
+  async createProject(name: string, description?: string): Promise<string> {
     if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
 
     const client = await this.pool.connect();
     try {
+      // Generate sequential hex ID (find next available)
+      const maxResult = await client.query(`
+        SELECT project_id FROM projects 
+        ORDER BY LENGTH(project_id) DESC, project_id DESC 
+        LIMIT 1
+      `);
+      
+      let nextId = 1;
+      if (maxResult.rows.length > 0) {
+        const lastHexId = maxResult.rows[0].project_id;
+        const lastDecimal = parseInt(lastHexId, 16);
+        nextId = lastDecimal + 1;
+      }
+      
+      const hexProjectId = nextId.toString(16).padStart(16, '0');
+      
       const result = await client.query(`
-        INSERT INTO projects (name, description)
-        VALUES ($1, $2)
+        INSERT INTO projects (project_id, name, description)
+        VALUES ($1, $2, $3)
         RETURNING project_id
-      `, [name, description || null]);
+      `, [hexProjectId, name, description || null]);
 
       return result.rows[0].project_id;
     } finally {
@@ -356,7 +372,7 @@ export class PostgresAdapter implements DatabaseAdapter {
     }
   }
 
-  async getProject(name: string): Promise<{project_id: number; name: string; description?: string} | null> {
+  async getProject(name: string): Promise<{project_id: string; name: string; description?: string} | null> {
     if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
 
     const client = await this.pool.connect();
@@ -384,16 +400,25 @@ export class PostgresAdapter implements DatabaseAdapter {
       await client.query('BEGIN');
 
       for (const tagName of tags) {
-        // Generate hash-based tag ID
-        const tagId = generateTagHash(tagName);
+        // First check if tag already exists
+        const existingTag = await client.query(`
+          SELECT tag_id FROM tags WHERE name = $1
+        `, [tagName]);
         
-        // Insert tag with hash ID if not exists
-        await client.query(`
-          INSERT INTO tags (tag_id, name) VALUES ($1, $2)
-          ON CONFLICT (name) DO NOTHING
-        `, [tagId, tagName]);
+        let tagId: string;
         
-        // Link tag to memory using hash IDs
+        if (existingTag.rows.length > 0) {
+          // Use existing tag ID
+          tagId = existingTag.rows[0].tag_id;
+        } else {
+          // Generate new hex-based tag ID and create tag
+          tagId = generateTagHash(tagName);
+          await client.query(`
+            INSERT INTO tags (tag_id, name) VALUES ($1, $2)
+          `, [tagId, tagName]);
+        }
+        
+        // Link tag to memory using the correct tag ID
         await client.query(`
           INSERT INTO memory_tags (memory_id, tag_id)
           VALUES ($1, $2)
@@ -428,7 +453,7 @@ export class PostgresAdapter implements DatabaseAdapter {
     }
   }
 
-  async getAllTags(projectId?: number): Promise<string[]> {
+  async getAllTags(projectId?: string): Promise<string[]> {
     if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
 
     const client = await this.pool.connect();
@@ -454,7 +479,7 @@ export class PostgresAdapter implements DatabaseAdapter {
     }
   }
 
-  async getMemoriesByTag(tagName: string, projectId?: number, limit?: number): Promise<Memory[]> {
+  async getMemoriesByTag(tagName: string, projectId?: string, limit?: number): Promise<Memory[]> {
     if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
 
     const client = await this.pool.connect();

@@ -30,16 +30,22 @@ interface TestSuite {
 class TestRunner {
   private testSuites: TestSuite[] = [
     {
-      name: 'SSH Tunnel Tests',
-      script: './scripts/test-ssh-tunnel.ts',
-      description: 'Test SSH connectivity and tunnel establishment',
-      required: true
+      name: 'Hash Utility Tests',
+      script: './scripts/test-hash-utils.ts',
+      description: 'Unit tests for hash generation and formatting',
+      required: false
     },
     {
       name: 'PostgreSQL Tests',
       script: './scripts/test-postgres.ts', 
       description: 'Test PostgreSQL connectivity and operations',
       required: true
+    },
+    {
+      name: 'Phase 1 Extension Tests',
+      script: './scripts/test-phase1-extensions.ts',
+      description: 'Test smart memory automation tools (quick-store, recent-context, search-enhanced)',
+      required: false
     }
   ];
 
@@ -146,10 +152,11 @@ class TestRunner {
     if (allPassed) {
       console.error('🎉 ALL TESTS PASSED!');
       console.error('');
-      console.error('✅ SSH tunnels are working correctly');
-      console.error('✅ PostgreSQL connectivity is established');
-      console.error('✅ Database operations are functional');
-      console.error('✅ Vector similarity search is working');
+      console.error('✅ Hash utilities working correctly');
+      console.error('✅ PostgreSQL connectivity established');
+      console.error('✅ Database operations functional');
+      console.error('✅ Phase 1 Extensions (quick-store, recent-context, search-enhanced) working');
+      console.error('✅ Vector similarity search operational');
       console.error('');
       console.error('🚀 The memory MCP server is ready for PostgreSQL production use!');
       console.error('');
@@ -162,14 +169,13 @@ class TestRunner {
       console.error('');
       console.error('Please review the test output above and address any issues.');
       console.error('Common issues:');
-      console.error('- SSH key permissions (should be 600)');
+      console.error('- Database connection credentials');
       console.error('- Network connectivity to hosts');
       console.error('- PostgreSQL service not running');
       console.error('- pgvector extension not installed');
       console.error('- Database schema not initialized');
       console.error('');
       console.error('Run individual test suites for more detailed diagnosis:');
-      console.error('- npm run test:ssh');
       console.error('- npm run test:postgres');
     }
     

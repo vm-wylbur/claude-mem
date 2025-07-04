@@ -24,13 +24,13 @@ export const MemoryMetadata = z.object({
 export type MemoryMetadata = z.infer<typeof MemoryMetadata>;
 
 export interface Memory {
-    memory_id: string;  // BIGINT hash as string
+    memory_id: string;  // Hash as hex string
     content: string;
     content_type: string;
     metadata: string;
     similarity?: number;
     embedding?: string;  // pgvector embedding as string
-    project_id: number;
+    project_id: string;  // Hash as hex string
     created_at: string;
     updated_at?: string;
 }
@@ -59,7 +59,7 @@ export interface Memory {
  */
 export class DatabaseService {
     private adapter: DatabaseAdapter;
-    private devProjectId: number | null = null;
+    private devProjectId: string | null = null;
 
     constructor(adapter: DatabaseAdapter) {
         this.adapter = adapter;
@@ -108,7 +108,7 @@ export class DatabaseService {
         content: string,
         type: MemoryType,
         metadata: MemoryMetadata,
-        projectId: number
+        projectId: string
     ): Promise<string> {
         return this.adapter.storeMemory(content, type, metadata, projectId);
     }
@@ -127,7 +127,7 @@ export class DatabaseService {
     /**
      * Get memories for a specific project
      */
-    async getProjectMemories(projectId: number, limit?: number): Promise<Memory[]> {
+    async getProjectMemories(projectId: string, limit?: number): Promise<Memory[]> {
         return this.adapter.getProjectMemories(projectId, limit);
     }
 
@@ -156,7 +156,7 @@ export class DatabaseService {
     async findSimilarMemoriesInProject(
         content: string, 
         limit: number = 5, 
-        projectId?: number
+        projectId?: string
     ): Promise<Memory[]> {
         return this.adapter.findSimilarMemories(content, limit, projectId);
     }
@@ -166,7 +166,7 @@ export class DatabaseService {
      */
     async searchByMetadata(
         query: Record<string, any>, 
-        projectId?: number
+        projectId?: string
     ): Promise<Memory[]> {
         const searchProjectId = projectId || this.devProjectId;
         if (!searchProjectId) {
@@ -193,7 +193,7 @@ export class DatabaseService {
     /**
      * Get all available tags, optionally filtered by project
      */
-    async getAllTags(projectId?: number): Promise<string[]> {
+    async getAllTags(projectId?: string): Promise<string[]> {
         return this.adapter.getAllTags(projectId);
     }
 
@@ -210,7 +210,7 @@ export class DatabaseService {
     /**
      * Get memories that have a specific tag
      */
-    async getMemoriesByTag(tagName: string, projectId?: number, limit?: number): Promise<Memory[]> {
+    async getMemoriesByTag(tagName: string, projectId?: string, limit?: number): Promise<Memory[]> {
         return this.adapter.getMemoriesByTag(tagName, projectId, limit);
     }
 
@@ -238,14 +238,14 @@ export class DatabaseService {
     /**
      * Create a new project
      */
-    async createProject(name: string, description?: string): Promise<number> {
+    async createProject(name: string, description?: string): Promise<string> {
         return this.adapter.createProject(name, description);
     }
 
     /**
      * Get project by name
      */
-    async getProject(name: string): Promise<{project_id: number; name: string; description?: string} | null> {
+    async getProject(name: string): Promise<{project_id: string; name: string; description?: string} | null> {
         return this.adapter.getProject(name);
     }
 

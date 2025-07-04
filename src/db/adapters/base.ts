@@ -62,14 +62,14 @@ export interface DatabaseAdapter {
    * @param content - The text content of the memory
    * @param type - Type of memory (conversation, code, decision, reference)
    * @param metadata - Structured metadata for the memory
-   * @param projectId - Project this memory belongs to
+   * @param projectId - Project this memory belongs to (hex string)
    * @returns Promise resolving to the new memory hash ID (as string)
    */
   storeMemory(
     content: string, 
     type: MemoryType, 
     metadata: MemoryMetadata, 
-    projectId: number
+    projectId: string
   ): Promise<string>;
 
   /**
@@ -81,11 +81,11 @@ export interface DatabaseAdapter {
 
   /**
    * Get all memories for a specific project
-   * @param projectId - Project identifier
+   * @param projectId - Project identifier (hex string)
    * @param limit - Optional limit on number of results
    * @returns Promise resolving to array of Memory objects
    */
-  getProjectMemories(projectId: number, limit?: number): Promise<Memory[]>;
+  getProjectMemories(projectId: string, limit?: number): Promise<Memory[]>;
 
   //
   // Search Operations
@@ -104,7 +104,7 @@ export interface DatabaseAdapter {
   findSimilarMemories(
     content: string, 
     limit: number, 
-    projectId?: number
+    projectId?: string
   ): Promise<Memory[]>;
 
   /**
@@ -117,7 +117,7 @@ export interface DatabaseAdapter {
    */
   searchByMetadata(
     query: Record<string, any>, 
-    projectId?: number
+    projectId?: string
   ): Promise<Memory[]>;
 
   //
@@ -128,16 +128,16 @@ export interface DatabaseAdapter {
    * Create a new project
    * @param name - Project name (must be unique)
    * @param description - Optional project description
-   * @returns Promise resolving to new project ID
+   * @returns Promise resolving to new project ID (hex string)
    */
-  createProject(name: string, description?: string): Promise<number>;
+  createProject(name: string, description?: string): Promise<string>;
 
   /**
    * Get project by name
    * @param name - Project name to look up
    * @returns Promise resolving to project info or null if not found
    */
-  getProject(name: string): Promise<{project_id: number; name: string; description?: string} | null>;
+  getProject(name: string): Promise<{project_id: string; name: string; description?: string} | null>;
 
   //
   // Tag Management  
@@ -164,7 +164,7 @@ export interface DatabaseAdapter {
    * @param projectId - Optional project filter
    * @returns Promise resolving to array of tag strings
    */
-  getAllTags(projectId?: number): Promise<string[]>;
+  getAllTags(projectId?: string): Promise<string[]>;
 
   /**
    * Get memories that have a specific tag
@@ -173,7 +173,7 @@ export interface DatabaseAdapter {
    * @param limit - Optional limit on number of results
    * @returns Promise resolving to array of Memory objects
    */
-  getMemoriesByTag(tagName: string, projectId?: number, limit?: number): Promise<Memory[]>;
+  getMemoriesByTag(tagName: string, projectId?: string, limit?: number): Promise<Memory[]>;
 
   //
   // Relationship Management

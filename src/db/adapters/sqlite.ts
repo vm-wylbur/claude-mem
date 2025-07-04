@@ -9,7 +9,7 @@ import Database from 'better-sqlite3';
 import { DatabaseAdapter, DatabaseConfig, DatabaseConnectionError } from './base.js';
 import { MemoryType, MemoryMetadata, Memory } from '../service.js';
 import { generateEmbedding, storeEmbedding } from '../../embeddings.js';
-import { generateMemoryHash, initializeHasher } from '../../utils/hash.js';
+import { generateMemoryHash, generateTagHash, initializeHasher } from '../../utils/hash.js';
 
 /**
  * SQLite Database Adapter Implementation
@@ -98,7 +98,7 @@ export class SqliteAdapter implements DatabaseAdapter {
     content: string,
     type: MemoryType,
     metadata: MemoryMetadata,
-    projectId: number
+    projectId: string
   ): Promise<string> {
     if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
 
@@ -136,7 +136,7 @@ export class SqliteAdapter implements DatabaseAdapter {
     return result || null;
   }
 
-  async getProjectMemories(projectId: number, limit?: number): Promise<Memory[]> {
+  async getProjectMemories(projectId: string, limit?: number): Promise<Memory[]> {
     if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
 
     let query = `
@@ -160,7 +160,7 @@ export class SqliteAdapter implements DatabaseAdapter {
   async findSimilarMemories(
     content: string,
     limit: number,
-    projectId?: number
+    projectId?: string
   ): Promise<Memory[]> {
     if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
 
@@ -217,7 +217,7 @@ export class SqliteAdapter implements DatabaseAdapter {
 
   async searchByMetadata(
     query: Record<string, any>,
-    projectId?: number
+    projectId?: string
   ): Promise<Memory[]> {
     if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
 
@@ -255,19 +255,22 @@ export class SqliteAdapter implements DatabaseAdapter {
   // Project Management
   //
 
-  async createProject(name: string, description?: string): Promise<number> {
+  async createProject(name: string, description?: string): Promise<string> {
     if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
 
+    // Generate hash-based project ID
+    const projectId = generateTagHash(name); // Use tag hash for projects
+    
     const stmt = this.db.prepare(`
-      INSERT INTO projects (name, description)
-      VALUES (?, ?)
+      INSERT INTO projects (project_id, name, description)
+      VALUES (?, ?, ?)
     `);
-
-    const result = stmt.run(name, description || null);
-    return result.lastInsertRowid as number;
+    
+    stmt.run(projectId, name, description || null);
+    return projectId;
   }
 
-  async getProject(name: string): Promise<{project_id: number; name: string; description?: string} | null> {
+  async getProject(name: string): Promise<{project_id: string; name: string; description?: string} | null> {
     if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
 
     const stmt = this.db.prepare('SELECT project_id, name, description FROM projects WHERE name = ?');
@@ -312,7 +315,7 @@ export class SqliteAdapter implements DatabaseAdapter {
     return results.map(row => row.name);
   }
 
-  async getAllTags(projectId?: number): Promise<string[]> {
+  async getAllTags(projectId?: string): Promise<string[]> {
     if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
 
     let query = 'SELECT DISTINCT t.name FROM tags t';
@@ -334,7 +337,7 @@ export class SqliteAdapter implements DatabaseAdapter {
     return results.map(row => row.name);
   }
 
-  async getMemoriesByTag(tagName: string, projectId?: number, limit?: number): Promise<Memory[]> {
+  async getMemoriesByTag(tagName: string, projectId?: string, limit?: number): Promise<Memory[]> {
     if (!this.db) throw new DatabaseConnectionError('Not connected', 'sqlite');
 
     let query = `
