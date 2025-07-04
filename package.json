@@ -1,5 +1,5 @@
 {
-  "name": "memory-mcp-server-pg",
+  "name": "claude-mem",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
@@ -15,7 +15,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "Long-term memory storage system for LLMs using MCP protocol",
+  "description": "Claude Memory - Long-term memory storage system for LLMs using MCP protocol",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.7.0",
     "@types/pg": "^8.15.4",

@@ -1,6 +1,6 @@
-# Memory MCP Server
+# Claude Memory
 
-A long-term memory storage system for LLMs using the Model Context Protocol (MCP) standard. This system helps LLMs remember the context of work done over the entire history of a project, even across multiple sessions. It uses semantic search with embeddings to provide relevant context from past interactions and development decisions.
+A long-term memory storage system for Claude and other LLMs using the Model Context Protocol (MCP) standard. This system helps LLMs remember the context of work done over the entire history of a project, even across multiple sessions. It uses semantic search with embeddings to provide relevant context from past interactions and development decisions.
 
 ## Features
 
@@ -112,7 +112,7 @@ Key dependencies:
 ## Project Structure
 
 ```
-memory-mcp-server/
+claude-mem/
 ├── src/
 │   ├── db/
 │   │   ├── init.ts     # Database initialization
