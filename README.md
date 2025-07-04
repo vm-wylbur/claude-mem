@@ -23,9 +23,9 @@ A long-term memory storage system for Claude and other LLMs using the Model Cont
 ## Prerequisites
 
 - Node.js (v18 or later)
+- PostgreSQL database with pgvector extension
 - Ollama running locally (for embeddings)
   - Must have the `nomic-embed-text` model installed
-- SQLite3
 
 ## Installation
 
@@ -38,10 +38,14 @@ A long-term memory storage system for Claude and other LLMs using the Model Cont
    ```bash
    npm run build
    ```
-4. Create a `.env` file with required configuration:
-   ```
-   OLLAMA_HOST=http://localhost:11434
-   DB_PATH=memory.db
+4. Configure the system:
+   ```bash
+   # Copy example configuration
+   mkdir -p ~/.config/claude-mem
+   cp claude-mem.toml.example ~/.config/claude-mem/claude-mem.toml
+   
+   # Edit configuration for your setup
+   # See DATABASE_CONFIG.md for detailed setup instructions
    ```
 
 ## Usage
@@ -57,36 +61,61 @@ A long-term memory storage system for Claude and other LLMs using the Model Cont
 
 2. The server connects via stdio for Cursor compatibility
 
-## Database Schema
+## Configuration
 
-The system uses SQLite with the following tables:
+Claude Memory uses TOML configuration files for flexible setup:
+
+- **Primary config**: `~/.config/claude-mem/claude-mem.toml`
+- **Example**: `claude-mem.toml.example` (copy and customize)
+- **Documentation**: See `DATABASE_CONFIG.md` for detailed setup
+
+### Quick Setup
+```bash
+# PostgreSQL with environment variable
+MCPMEM_DB_TYPE=postgresql npm run dev
+
+# Or configure via TOML file (recommended)
+cp claude-mem.toml.example ~/.config/claude-mem/claude-mem.toml
+# Edit the TOML file for your database settings
+npm run dev
+```
+
+## Database
+
+Claude Memory uses PostgreSQL with pgvector for high-performance semantic search:
 
 ### Core Tables
 - `projects`: Project information and metadata
-- `memories`: Memory entries storing various types of development context
-- `embeddings`: Vector embeddings (768d) for semantic search capabilities
+- `memories`: Memory entries with vector embeddings (768d)
+- `tags`: Memory organization and categorization
+- `memory_tags`: Memory-tag relationships
+- `memory_relationships`: Links between related memories
 
-### Organization Tables
-- `tags`: Memory organization tags
-- `memory_tags`: Many-to-many relationships between memories and tags
-- `memory_relationships`: Directed relationships between memory entries
+### Features
+- Native pgvector similarity search
+- JSONB metadata storage
+- Full-text search capabilities
+- Transactional consistency
 
 ## MCP Tools
 
 The following tools are available through the MCP protocol:
 
 ### Memory Management
-- `store-dev-memory`: Create new development memories with:
-  - Content
-  - Type (conversation/code/decision/reference)
-  - Tags
-  - Code changes
-  - Files created/modified
-  - Key decisions
-  - Implementation status
-- `list-dev-memories`: List existing memories with optional tag filtering
+- `store-dev-memory`: Create detailed memories with metadata, tags, and relationships
+- `quick-store`: Simple memory storage with auto-detection
+- `list-dev-memories`: Browse recent memories with pagination
 - `get-dev-memory`: Retrieve specific memory by ID
-- `search`: Semantic search across memories using embeddings
+- `get-recent-context`: Get recent memories for session continuity
+
+### Search & Discovery
+- `search`: Basic semantic search using vector embeddings
+- `search-enhanced`: Advanced search with filtering and scoring
+- `get-all-tags`: Browse available tags for discovery
+- `list-memories-by-tag`: Find memories by specific tags
+
+### System
+- `memory-overview`: System status, statistics, and usage guide
 
 ## Development
 
@@ -105,7 +134,9 @@ This will:
 
 Key dependencies:
 - `@modelcontextprotocol/sdk@^1.7.0`: MCP protocol implementation
-- `better-sqlite3@^9.4.3`: SQLite database interface
+- `pg@^8.16.3`: PostgreSQL database interface
+- `toml@^3.0.0`: Configuration file parsing
+- `xxhash-wasm@^1.1.0`: Fast hash generation
 - `node-fetch@^3.3.2`: HTTP client for Ollama API
 - `zod@^3.22.4`: Runtime type checking and validation
 
@@ -115,12 +146,20 @@ Key dependencies:
 claude-mem/
 ├── src/
 │   ├── db/
+│   │   ├── adapters/   # Database adapters (PostgreSQL)
 │   │   ├── init.ts     # Database initialization
 │   │   └── service.ts  # Database service layer
-│   ├── dev-memory.ts   # Development memory helpers
+│   ├── tools/          # MCP tool implementations
+│   ├── utils/          # Utility functions
+│   ├── config-toml.ts  # Configuration management
 │   ├── index.ts        # Main server implementation
 │   └── schema.sql      # Database schema
+├── docs/
+│   ├── archives/       # Historical documentation
+│   └── future-bluesky/ # Vision documents
 ├── dist/               # Compiled JavaScript
+├── DATABASE_CONFIG.md  # Setup instructions
+├── claude-mem.toml.example # Configuration template
 ├── package.json        # Project configuration
 └── tsconfig.json       # TypeScript configuration
 ```
@@ -131,4 +170,13 @@ Contributions are welcome! Please ensure you:
 1. Write clear commit messages
 2. Add appropriate documentation
 3. Follow the existing code style
-4. Add/update tests as needed 
+4. Add/update tests as needed
+
+## Acknowledgements
+
+This project builds upon the foundational work of others in the MCP memory ecosystem:
+
+- **Original Foundation**: [mcp-long-term-memory](https://github.com/tomschell/mcp-long-term-memory) by @tomschell provided the initial MCP memory server implementation and core concept
+- **Design Inspiration**: [mcp-mem0](https://github.com/coleam00/mcp-mem0) by @coleam00 provided valuable insights for natural language memory capture and user experience enhancements
+
+We've added PostgreSQL support with pgvector, hash-based memory IDs, and TOML configuration.
