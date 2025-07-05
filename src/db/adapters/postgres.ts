@@ -449,31 +449,69 @@ export class PostgresAdapter implements DatabaseAdapter {
     try {
       await client.query('BEGIN');
 
+      // Pre-validate all tags and check for existing ones
+      const existingTags: string[] = [];
+      const tagInfo: Array<{name: string, tagId: string, exists: boolean}> = [];
+
       for (const tagName of tags) {
-        // First check if tag already exists
+        // Validate tag name first
+        const validation = await this.validateTagNameForDatabase(tagName);
+        if (!validation.valid) {
+          throw new Error(`Invalid tag name "${tagName}": ${validation.error}`);
+        }
+
+        // Check if tag already exists
         const existingTag = await client.query(`
           SELECT tag_id FROM tags WHERE name = $1
         `, [tagName]);
         
-        let tagId: string;
-        
         if (existingTag.rows.length > 0) {
-          // Use existing tag ID
-          tagId = existingTag.rows[0].tag_id;
+          // Tag exists
+          tagInfo.push({
+            name: tagName,
+            tagId: existingTag.rows[0].tag_id,
+            exists: true
+          });
+          existingTags.push(tagName);
         } else {
-          // Generate new hex-based tag ID and create tag
-          tagId = generateTagHash(tagName);
+          // Tag is new
+          const tagId = generateTagHash(tagName);
+          tagInfo.push({
+            name: tagName,
+            tagId: tagId,
+            exists: false
+          });
+        }
+      }
+
+      // Create new tags
+      for (const tag of tagInfo.filter(t => !t.exists)) {
+        try {
           await client.query(`
             INSERT INTO tags (tag_id, name) VALUES ($1, $2)
-          `, [tagId, tagName]);
+          `, [tag.tagId, tag.name]);
+        } catch (error: any) {
+          if (error.code === '23505') { // PostgreSQL unique constraint violation
+            throw new Error(`Tag '${tag.name}' already exists (created by another process)`);
+          }
+          throw error;
         }
-        
-        // Link tag to memory using the correct tag ID
-        await client.query(`
-          INSERT INTO memory_tags (memory_id, tag_id)
-          VALUES ($1, $2)
-          ON CONFLICT (memory_id, tag_id) DO NOTHING
-        `, [memoryId, tagId]);
+      }
+      
+      // Link all tags to memory
+      for (const tag of tagInfo) {
+        try {
+          await client.query(`
+            INSERT INTO memory_tags (memory_id, tag_id)
+            VALUES ($1, $2)
+            ON CONFLICT (memory_id, tag_id) DO NOTHING
+          `, [memoryId, tag.tagId]);
+        } catch (error: any) {
+          if (error.code === '23503') { // PostgreSQL foreign key constraint violation
+            throw new Error(`Memory with ID '${memoryId}' does not exist`);
+          }
+          throw error;
+        }
       }
 
       await client.query('COMMIT');
@@ -483,6 +521,12 @@ export class PostgresAdapter implements DatabaseAdapter {
     } finally {
       client.release();
     }
+  }
+
+  private async validateTagNameForDatabase(tagName: string): Promise<{valid: boolean, error: string | null}> {
+    // Import validation function dynamically to avoid circular imports
+    const { validateTagName } = await import('../../utils/hash.js');
+    return validateTagName(tagName);
   }
 
   async getMemoryTags(memoryId: string): Promise<string[]> {
