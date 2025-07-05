@@ -93,15 +93,18 @@ export class AnalyzeMemoryQualityTool extends BaseMCPTool {
         };
       }
 
-      // Analyze each memory
+      // Analyze each memory for quality
       const analyses: MemoryQualityAnalysis[] = [];
       for (const memory of memoriesToAnalyze) {
         const analysis = await this.analyzeMemoryQuality(memory, codebaseRoot, includeCodeCheck);
         analyses.push(analysis);
       }
 
-      // Generate summary report
-      const report = this.generateQualityReport(analyses, memoriesToAnalyze.length);
+      // Analyze memories for deletion candidates
+      const deletionAnalysis = await this.analyzeDeletionCandidates(memoriesToAnalyze);
+
+      // Generate summary report with deletion recommendations
+      const report = this.generateQualityReport(analyses, memoriesToAnalyze.length, deletionAnalysis);
 
       return {
         content: [{
@@ -658,7 +661,7 @@ export class AnalyzeMemoryQualityTool extends BaseMCPTool {
       return titleMatch[1].trim();
     }
     
-    // Look for our specific startup protocol pattern
+    // Fallback: Look for our specific startup protocol pattern
     if (content.includes('Startup Protocol')) {
       return 'Enhanced Fresh Claude Instance Startup Protocol';
     }
@@ -692,7 +695,7 @@ export class AnalyzeMemoryQualityTool extends BaseMCPTool {
     return commonWords.length / totalWords;
   }
 
-  private generateQualityReport(analyses: MemoryQualityAnalysis[], totalMemories: number) {
+  private generateQualityReport(analyses: MemoryQualityAnalysis[], totalMemories: number, deletionAnalysis?: DeletionAnalysis) {
     const avgScore = analyses.reduce((sum, a) => sum + a.qualityScore, 0) / analyses.length;
     const issueCountsBySeverity = { critical: 0, high: 0, medium: 0, low: 0 };
     const issueCountsByType = { outdated_code: 0, broken_path: 0, duplicate: 0, inconsistent: 0, low_quality: 0 };
@@ -712,7 +715,7 @@ export class AnalyzeMemoryQualityTool extends BaseMCPTool {
     // Calculate age-based cleanup recommendations
     const staleMemories = this.findStaleMemories(analyses);
 
-    return {
+    const baseReport = {
       summary: {
         memoriesAnalyzed: analyses.length,
         totalMemories,
@@ -734,7 +737,8 @@ export class AnalyzeMemoryQualityTool extends BaseMCPTool {
         issueCountsByType.duplicate > 0 ? `🔄 ${issueCountsByType.duplicate} duplicate memories could be merged` : null,
         issueCountsByType.broken_path > 0 ? `📁 ${issueCountsByType.broken_path} broken file paths need updating` : null,
         issueCountsByType.outdated_code > 0 ? `⏰ ${issueCountsByType.outdated_code} memories have outdated code references` : null,
-        staleMemories.length > 0 ? `🧹 ${staleMemories.length} stale low-quality memories >1 day old ready for cleanup` : null
+        staleMemories.length > 0 ? `🧹 ${staleMemories.length} stale low-quality memories >1 day old ready for cleanup` : null,
+        deletionAnalysis && deletionAnalysis.safeDeletionCount > 0 ? `🗑️ ${deletionAnalysis.safeDeletionCount} memories recommended for deletion` : null
       ].filter(Boolean),
       topProblematicMemories: topIssues.map(analysis => ({
         memoryId: analysis.memoryId,
@@ -744,5 +748,25 @@ export class AnalyzeMemoryQualityTool extends BaseMCPTool {
       })),
       detailedAnalyses: analyses
     };
+
+    // Add deletion analysis if provided
+    if (deletionAnalysis) {
+      return {
+        ...baseReport,
+        deletionRecommendations: deletionAnalysis.deletionRecommendations,
+        deletionSummary: {
+          totalAnalyzed: deletionAnalysis.totalAnalyzed,
+          safeDeletionCount: deletionAnalysis.safeDeletionCount,
+          reasonBreakdown: {
+            superseded: deletionAnalysis.deletionRecommendations.filter(r => r.reason === 'superseded').length,
+            testArtifacts: deletionAnalysis.deletionRecommendations.filter(r => r.reason === 'test-artifact').length,
+            duplicates: deletionAnalysis.deletionRecommendations.filter(r => r.reason === 'duplicate').length,
+            obsolete: deletionAnalysis.deletionRecommendations.filter(r => r.reason === 'obsolete').length
+          }
+        }
+      };
+    }
+
+    return baseReport;
   }
 }
