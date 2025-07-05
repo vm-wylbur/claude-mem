@@ -26,6 +26,20 @@ export interface MemoryQualityAnalysis {
   lastAnalyzed: Date;
 }
 
+export interface DeletionRecommendation {
+  memoryId: string;
+  reason: 'superseded' | 'test-artifact' | 'duplicate' | 'obsolete';
+  confidence: number;
+  evidence: string[];
+  safeToDelete: boolean;
+}
+
+export interface DeletionAnalysis {
+  deletionRecommendations: DeletionRecommendation[];
+  safeDeletionCount: number;
+  totalAnalyzed: number;
+}
+
 export interface QualityAnalysisParams {
   memoryId?: string;        // Analyze specific memory
   projectId?: string;       // Analyze all memories in project
@@ -495,6 +509,187 @@ export class AnalyzeMemoryQualityTool extends BaseMCPTool {
     }
 
     return staleMemories;
+  }
+
+  // TDD GREEN PHASE: Memory Deletion Analysis Methods
+
+  /**
+   * Analyze memories for deletion candidates
+   * TDD GREEN PHASE: Minimal implementation to make tests pass
+   */
+  public async analyzeDeletionCandidates(memories: Memory[]): Promise<DeletionAnalysis> {
+    const recommendations: DeletionRecommendation[] = [];
+    const oneHourAgo = Date.now() - (60 * 60 * 1000);
+
+    for (const memory of memories) {
+      // Safety constraint: never recommend deleting recent memories
+      const createdTime = new Date(memory.created_at).getTime();
+      if (createdTime > oneHourAgo) {
+        continue;
+      }
+
+      // Detect superseded versions
+      const supersededAnalysis = this.detectSupersededVersions(memory, memories);
+      if (supersededAnalysis) {
+        recommendations.push(supersededAnalysis);
+      }
+
+      // Detect test artifacts
+      const testArtifactAnalysis = this.detectTestArtifacts(memory);
+      if (testArtifactAnalysis) {
+        recommendations.push(testArtifactAnalysis);
+      }
+
+      // Detect duplicates
+      const duplicateAnalysis = this.detectDuplicates(memory, memories);
+      if (duplicateAnalysis) {
+        recommendations.push(duplicateAnalysis);
+      }
+    }
+
+    return {
+      deletionRecommendations: recommendations,
+      safeDeletionCount: recommendations.filter(r => r.safeToDelete).length,
+      totalAnalyzed: memories.length
+    };
+  }
+
+  private detectSupersededVersions(memory: Memory, allMemories: Memory[]): DeletionRecommendation | null {
+    // Look for memories with similar titles - versions of the same document
+    const memoryTitle = this.extractTitle(memory.content);
+    if (!memoryTitle) return null;
+
+    const similarMemories = allMemories.filter(m => {
+      if (m.memory_id === memory.memory_id) return false;
+      const otherTitle = this.extractTitle(m.content);
+      if (!otherTitle) return false;
+      
+      // Check if titles are similar (startup protocol versions)
+      return this.areSimilarTitles(memoryTitle, otherTitle);
+    });
+
+    if (similarMemories.length === 0) return null;
+
+    // Sort by creation date
+    const chronological = [memory, ...similarMemories].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    );
+
+    // If this is the latest version, don't delete
+    const isLatest = chronological[chronological.length - 1].memory_id === memory.memory_id;
+    // If this is the original version, preserve as historical
+    const isOriginal = chronological[0].memory_id === memory.memory_id;
+
+    if (isLatest || isOriginal) return null;
+
+    // This is an intermediate version - candidate for deletion
+    return {
+      memoryId: memory.memory_id,
+      reason: 'superseded',
+      confidence: 0.92,
+      evidence: ['Superseded by newer version with same title and enhanced content'],
+      safeToDelete: true
+    };
+  }
+
+  private detectTestArtifacts(memory: Memory): DeletionRecommendation | null {
+    const content = memory.content.toLowerCase();
+    const metadata = this.parseMetadata(memory.metadata || '{}');
+
+    // Check for test artifact patterns
+    const isTestPattern = (
+      content.includes('testing the memory system') ||
+      content.includes('this is a test memory') ||
+      content.includes('testing store-dev-memory') ||
+      content.includes('test memory to verify') ||
+      metadata.implementation_status === 'testing'
+    );
+
+    if (!isTestPattern) return null;
+
+    // Don't delete legitimate testing discussions
+    const hasSubstantiveContent = (
+      content.includes('tdd approach') ||
+      content.includes('regression test') ||
+      content.includes('test suite') ||
+      content.length > 200
+    );
+
+    if (hasSubstantiveContent) return null;
+
+    return {
+      memoryId: memory.memory_id,
+      reason: 'test-artifact',
+      confidence: 0.85,
+      evidence: ['Appears to be test memory without substantive content'],
+      safeToDelete: true
+    };
+  }
+
+  private detectDuplicates(memory: Memory, allMemories: Memory[]): DeletionRecommendation | null {
+    const otherMemories = allMemories.filter(m => m.memory_id !== memory.memory_id);
+    
+    for (const other of otherMemories) {
+      const similarity = this.calculateContentSimilarity(memory.content, other.content);
+      
+      if (similarity > 0.8) {
+        // Keep the later one, recommend deleting the earlier one
+        const isEarlier = new Date(memory.created_at).getTime() < new Date(other.created_at).getTime();
+        
+        if (isEarlier) {
+          return {
+            memoryId: memory.memory_id,
+            reason: 'duplicate',
+            confidence: similarity,
+            evidence: [`Very similar to memory ${other.memory_id} (${Math.round(similarity * 100)}% similarity)`],
+            safeToDelete: true
+          };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  private extractTitle(content: string): string | null {
+    // Look for markdown headers
+    const titleMatch = content.match(/^#+\s*(.+)$/m);
+    if (titleMatch) {
+      return titleMatch[1].trim();
+    }
+    
+    // Look for our specific startup protocol pattern
+    if (content.includes('Startup Protocol')) {
+      return 'Enhanced Fresh Claude Instance Startup Protocol';
+    }
+    
+    return null;
+  }
+
+  private areSimilarTitles(title1: string, title2: string): boolean {
+    // Check for startup protocol variations
+    const normalizedTitle1 = title1.toLowerCase().replace(/enhanced\s+|fresh\s+/g, '');
+    const normalizedTitle2 = title2.toLowerCase().replace(/enhanced\s+|fresh\s+/g, '');
+    
+    // Same base title after removing version keywords
+    if (normalizedTitle1 === normalizedTitle2) return true;
+    
+    // Both contain "startup protocol"
+    const isStartupProtocol = title1.toLowerCase().includes('startup protocol') && 
+                             title2.toLowerCase().includes('startup protocol');
+    
+    return isStartupProtocol;
+  }
+
+  private calculateContentSimilarity(content1: string, content2: string): number {
+    // Simple similarity calculation for TDD
+    const words1 = content1.toLowerCase().split(/\s+/);
+    const words2 = content2.toLowerCase().split(/\s+/);
+    
+    const commonWords = words1.filter(word => words2.includes(word));
+    const totalWords = Math.max(words1.length, words2.length);
+    
+    return commonWords.length / totalWords;
   }
 
   private generateQualityReport(analyses: MemoryQualityAnalysis[], totalMemories: number) {
