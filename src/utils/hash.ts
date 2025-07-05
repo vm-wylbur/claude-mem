@@ -101,8 +101,9 @@ export function generateTagHash(tagName: string): string {
     throw new Error('Hash utility not initialized. Call initializeHasher() first.');
   }
   
-  if (!isValidTagName(tagName)) {
-    throw new Error(`Invalid tag name: ${tagName}`);
+  const validation = validateTagName(tagName);
+  if (!validation.valid) {
+    throw new Error(`Invalid tag name "${tagName}": ${validation.error}`);
   }
   
   // Normalize tag name for consistent hashing
@@ -117,29 +118,62 @@ export function generateTagHash(tagName: string): string {
 }
 
 /**
- * Validate that a tag name is properly formatted
+ * Validate tag name and return detailed error information
  * 
  * @param tagName - Tag name to validate
- * @returns true if valid tag name
+ * @returns Object with validation result and specific error message
  */
-export function isValidTagName(tagName: string): boolean {
-  if (typeof tagName !== 'string') return false;
+export function validateTagName(tagName: any): { valid: boolean; error: string | null } {
+  // Check type first
+  if (typeof tagName !== 'string') {
+    return { valid: false, error: 'Tag name must be a string' };
+  }
   
   const trimmed = tagName.trim();
   
-  // Must be non-empty and reasonable length
-  if (trimmed.length === 0 || trimmed.length > 100) return false;
+  // Check for empty or whitespace-only
+  if (trimmed.length === 0) {
+    return { valid: false, error: tagName === '' ? 'Tag name cannot be empty' : 'Tag name cannot be empty or contain only whitespace' };
+  }
   
-  // No leading/trailing whitespace after trim
-  if (trimmed !== tagName) return false;
+  // Check length
+  if (trimmed.length > 100) {
+    return { valid: false, error: 'Tag name cannot exceed 100 characters' };
+  }
   
-  // No control characters or problematic characters
-  if (/[\x00-\x1f\x7f-\x9f]/.test(trimmed)) return false;
+  // Check for control characters first (includes newlines, tabs, etc.)
+  if (/[\x00-\x1f\x7f-\x9f]/.test(tagName)) {
+    return { valid: false, error: 'Tag name cannot contain control characters' };
+  }
   
-  // No hyphens (cause database constraint issues)
-  if (trimmed.includes('-')) return false;
+  // Check for leading/trailing whitespace
+  if (trimmed !== tagName) {
+    return { valid: false, error: 'Tag name cannot have leading or trailing whitespace' };
+  }
   
-  return true;
+  // Check for invalid hyphen patterns (start/end with hyphen, consecutive hyphens)
+  if (trimmed.startsWith('-') || trimmed.endsWith('-')) {
+    return { valid: false, error: 'Tag name cannot start or end with hyphens' };
+  }
+  
+  if (trimmed.includes('--')) {
+    return { valid: false, error: 'Tag name cannot contain consecutive hyphens' };
+  }
+  
+  // All checks passed
+  return { valid: true, error: null };
+}
+
+/**
+ * Validate that a tag name is properly formatted (legacy function)
+ * 
+ * @param tagName - Tag name to validate
+ * @returns true if valid tag name
+ * @deprecated Use validateTagName() for better error messages
+ */
+export function isValidTagName(tagName: string): boolean {
+  const result = validateTagName(tagName);
+  return result.valid;
 }
 
 /**

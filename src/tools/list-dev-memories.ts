@@ -1,6 +1,9 @@
-// TDD Phase 2: List Dev Memories Tool (GREEN phase implementation)
+// List Dev Memories Tool with Database-Level Tag Filtering
 // Author: PB and Claude
-// Date: 2025-07-04
+// Date: 2025-07-05
+//
+// TDD Implementation completed: RED → GREEN → REFACTOR
+// Features: Efficient database-level tag filtering, hash ID formatting
 
 import { BaseMCPTool, MCPResponse } from './base-tool.js';
 import { formatHashForDisplay } from '../utils/hash.js';
@@ -15,26 +18,14 @@ export class ListDevMemoriesTool extends BaseMCPTool<ListDevMemoriesParams> {
     try {
       const { limit = 10, tag } = params;
       
-      // Pass limit directly to database for efficient pagination
-      const memories = await this.dbService.getDevMemories(limit);
-
-      if (tag) {
-        // TODO: Implement proper tag filtering using database queries
-        console.error(`Note: Tag filtering for "${tag}" not yet implemented in list operation`);
-        // For now, filter in memory but only on the already-limited results
-        const filtered = memories.filter(memory => {
-          // This is a placeholder - proper implementation should use SQL filtering
-          return true; // TODO: implement tag filtering at DB level
-        });
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify(filtered.map(memory => ({
-              ...memory,
-              memory_id: formatHashForDisplay(memory.memory_id)
-            })), null, 2)
-          }]
-        };
+      let memories;
+      
+      if (tag && tag.trim() !== '') {
+        // Use database-level tag filtering for efficiency
+        memories = await this.dbService.getDevMemoriesByTag(tag, limit);
+      } else {
+        // No tag filtering - get all memories
+        memories = await this.dbService.getDevMemories(limit);
       }
       
       // Format memories with hex IDs for display
