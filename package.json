@@ -6,6 +6,10 @@
   "scripts": {
     "build": "node scripts/generate-build-info.cjs && tsc && cp src/schema.sql dist/ && cp src/db/postgres-schema.sql dist/ && cp -r scripts/ dist/ || true",
     "start": "node dist/index.js",
+    "clean": "rm -rf dist",
+    "build:http": "npm run clean && tsc -p tsconfig.cjs.json",
+    "start:http": "node dist/cjs/http-server.js",
+    
     "dev": "npm run build && npm start",
     "init:postgres": "npm run build && MCPMEM_DB_TYPE=postgresql npx tsx scripts/init-postgres.ts",
     "test": "npm run test:all",
@@ -22,7 +26,7 @@
     "better-sqlite3": "^11.9.1",
     "commander": "^12.0.0",
     "dotenv": "^16.4.7",
-    "express": "^5.0.1",
+    "express": "^5.1.0",
     "node-fetch": "^3.3.2",
     "pg": "^8.16.3",
     "toml": "^3.0.0",
@@ -31,7 +35,7 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.9",
-    "@types/express": "^5.0.0",
+    "@types/express": "^5.0.3",
     "@types/node": "^20.11.28",
     "tsx": "^4.20.3",
     "typescript": "^5.4.2"

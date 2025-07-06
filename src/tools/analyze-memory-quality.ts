@@ -34,8 +34,28 @@ export interface DeletionRecommendation {
   safeToDelete: boolean;
 }
 
+export interface MergerRecommendation {
+  action: 'merge';
+  primaryMemoryId: string;
+  secondaryMemoryId: string;
+  strategy: 'evolution' | 'combination' | 'hierarchical' | 'consolidation';
+  confidence: number;
+  evidence: string[];
+  mergePreview: string;
+  reasoning: string;
+}
+
+export interface ContentQualityMetrics {
+  structuralElements: number;      // Headers, sections, lists
+  criticalSections: string[];     // "CRITICAL", "MANDATORY", "WARNING"
+  informationDensity: number;     // Content length / fluff ratio
+  actionableItems: number;        // Checkboxes, steps, procedures
+  contextualReferences: number;   // File paths, commands, examples
+}
+
 export interface DeletionAnalysis {
   deletionRecommendations: DeletionRecommendation[];
+  mergerRecommendations: MergerRecommendation[];
   safeDeletionCount: number;
   totalAnalyzed: number;
 }
@@ -517,13 +537,33 @@ export class AnalyzeMemoryQualityTool extends BaseMCPTool {
   // TDD GREEN PHASE: Memory Deletion Analysis Methods
 
   /**
-   * Analyze memories for deletion candidates
-   * TDD GREEN PHASE: Minimal implementation to make tests pass
+   * Analyze memories for deletion candidates and merger opportunities
+   * Enhanced with semantic merger logic
    */
   public async analyzeDeletionCandidates(memories: Memory[]): Promise<DeletionAnalysis> {
-    const recommendations: DeletionRecommendation[] = [];
+    const deletionRecommendations: DeletionRecommendation[] = [];
+    const mergerRecommendations: MergerRecommendation[] = [];
     const oneHourAgo = Date.now() - (60 * 60 * 1000);
+    const processedPairs = new Set<string>();
 
+    // First pass: Check for merger opportunities (no age restrictions - merging is additive)
+    for (const memory of memories) {
+      for (const otherMemory of memories) {
+        if (memory.memory_id === otherMemory.memory_id) continue;
+        
+        // Create unique pair identifier to avoid duplicate analysis
+        const pairId = [memory.memory_id, otherMemory.memory_id].sort().join('|');
+        if (processedPairs.has(pairId)) continue;
+        processedPairs.add(pairId);
+
+        const mergerOpportunity = this.analyzeMergerOpportunity(memory, otherMemory);
+        if (mergerOpportunity) {
+          mergerRecommendations.push(mergerOpportunity);
+        }
+      }
+    }
+
+    // Second pass: Check for deletion candidates (with age restrictions - deletion is destructive)
     for (const memory of memories) {
       // Safety constraint: never recommend deleting recent memories
       const createdTime = new Date(memory.created_at).getTime();
@@ -531,30 +571,438 @@ export class AnalyzeMemoryQualityTool extends BaseMCPTool {
         continue;
       }
 
-      // Detect superseded versions
-      const supersededAnalysis = this.detectSupersededVersions(memory, memories);
+      // Only consider deletion if no merger opportunity exists
+      const hasExistingMergerRecommendation = mergerRecommendations.some(m => 
+        m.primaryMemoryId === memory.memory_id || m.secondaryMemoryId === memory.memory_id
+      );
+
+      // Detect superseded versions (enhanced with quality analysis)
+      const supersededAnalysis = this.detectSupersededVersionsEnhanced(memory, memories);
       if (supersededAnalysis) {
-        recommendations.push(supersededAnalysis);
+        deletionRecommendations.push(supersededAnalysis);
       }
 
       // Detect test artifacts
       const testArtifactAnalysis = this.detectTestArtifacts(memory);
       if (testArtifactAnalysis) {
-        recommendations.push(testArtifactAnalysis);
+        deletionRecommendations.push(testArtifactAnalysis);
       }
 
-      // Detect duplicates
+      // Detect duplicates (only if no merger possible)
       const duplicateAnalysis = this.detectDuplicates(memory, memories);
       if (duplicateAnalysis) {
-        recommendations.push(duplicateAnalysis);
+        deletionRecommendations.push(duplicateAnalysis);
       }
     }
 
-    return {
-      deletionRecommendations: recommendations,
-      safeDeletionCount: recommendations.filter(r => r.safeToDelete).length,
+    const result = {
+      deletionRecommendations,
+      mergerRecommendations,
+      safeDeletionCount: deletionRecommendations.filter(r => r.safeToDelete).length,
       totalAnalyzed: memories.length
     };
+
+    // Debug logging
+    console.log(`DEBUG: Found ${mergerRecommendations.length} merger recommendations`);
+    if (mergerRecommendations.length > 0) {
+      console.log('DEBUG: Merger recommendations:', mergerRecommendations.map(m => `${m.primaryMemoryId}<->${m.secondaryMemoryId} (${m.strategy})`));
+    }
+
+    return result;
+  }
+
+  // SEMANTIC MERGER METHODS
+
+  /**
+   * Analyze potential merger opportunity between two memories
+   */
+  private analyzeMergerOpportunity(memory1: Memory, memory2: Memory): MergerRecommendation | null {
+    const similarity = this.calculateContentSimilarity(memory1.content, memory2.content);
+    
+    // Debug logging
+    const title1 = this.extractTitle(memory1.content) || memory1.memory_id.slice(0, 8);
+    const title2 = this.extractTitle(memory2.content) || memory2.memory_id.slice(0, 8);
+    console.log(`DEBUG: Analyzing merger for "${title1}" vs "${title2}", similarity=${similarity.toFixed(3)}`);
+    
+    // Only consider merger for moderately similar content (avoid exact duplicates)
+    if (similarity < 0.6 || similarity > 0.95) {
+      console.log(`DEBUG: Similarity ${similarity.toFixed(3)} outside range 0.6-0.95, skipping`);
+      return null;
+    }
+
+    const quality1 = this.calculateContentQualityMetrics(memory1.content);
+    const quality2 = this.calculateContentQualityMetrics(memory2.content);
+    
+    // Determine merger strategy
+    const strategy = this.determineMergerStrategy(memory1, memory2, quality1, quality2);
+    if (!strategy) {
+      console.log(`DEBUG: No merger strategy found for "${title1}" vs "${title2}"`);
+      return null;
+    }
+
+    console.log(`DEBUG: Found merger opportunity: "${title1}" vs "${title2}" -> ${strategy}`);
+
+    // Generate merger recommendation
+    const mergerRecommendation = this.generateMergerRecommendation(
+      memory1, memory2, strategy, similarity, quality1, quality2
+    );
+
+    return mergerRecommendation;
+  }
+
+  /**
+   * Calculate content quality metrics for merger analysis
+   */
+  private calculateContentQualityMetrics(content: string): ContentQualityMetrics {
+    // Count structural elements
+    const headers = (content.match(/^#+\s+/gm) || []).length;
+    const lists = (content.match(/^[\s]*[-*+]\s+/gm) || []).length;
+    const codeBlocks = (content.match(/```[\s\S]*?```/g) || []).length;
+    const structuralElements = headers + lists + codeBlocks;
+
+    // Detect critical sections
+    const criticalKeywords = ['CRITICAL', 'MANDATORY', 'WARNING', 'NEVER', 'ALWAYS'];
+    const criticalSections = criticalKeywords.filter(keyword => 
+      content.toUpperCase().includes(keyword)
+    );
+
+    // Calculate information density (content vs fluff)
+    const substantiveWords = content.split(/\s+/).filter(word => 
+      word.length > 3 && !['the', 'and', 'that', 'this', 'with', 'for'].includes(word.toLowerCase())
+    ).length;
+    const informationDensity = substantiveWords / Math.max(content.split(/\s+/).length, 1);
+
+    // Count actionable items
+    const checkboxes = (content.match(/[-*]\s*\[[ x]\]/g) || []).length;
+    const numberedSteps = (content.match(/^\s*\d+\.\s+/gm) || []).length;
+    const actionableItems = checkboxes + numberedSteps;
+
+    // Count contextual references
+    const filePaths = this.extractFilePathsSemantic(content).length;
+    const commands = (content.match(/`[^`]*`/g) || []).length;
+    const contextualReferences = filePaths + commands;
+
+    return {
+      structuralElements,
+      criticalSections,
+      informationDensity,
+      actionableItems,
+      contextualReferences
+    };
+  }
+
+  /**
+   * Determine the best merger strategy for two memories
+   */
+  private determineMergerStrategy(
+    memory1: Memory, 
+    memory2: Memory, 
+    quality1: ContentQualityMetrics, 
+    quality2: ContentQualityMetrics
+  ): 'evolution' | 'combination' | 'hierarchical' | 'consolidation' | null {
+    
+    const title1 = this.extractTitle(memory1.content);
+    const title2 = this.extractTitle(memory2.content);
+    
+    // Evolution: Same title, one clearly enhanced version
+    if (title1 && title2 && this.areSimilarTitles(title1, title2)) {
+      const hasQualityImprovement = 
+        Math.abs(quality1.criticalSections.length - quality2.criticalSections.length) > 0 ||
+        Math.abs(quality1.structuralElements - quality2.structuralElements) > 2;
+      
+      if (hasQualityImprovement) return 'evolution';
+    }
+
+    // Combination: Different focuses that complement each other
+    const content1Lower = memory1.content.toLowerCase();
+    const content2Lower = memory2.content.toLowerCase();
+    
+    const focus1 = this.identifyContentFocus(content1Lower);
+    const focus2 = this.identifyContentFocus(content2Lower);
+    
+    if (focus1 !== focus2 && focus1 !== 'general' && focus2 !== 'general') {
+      return 'combination';
+    }
+
+    // Hierarchical: One is detailed, other is overview
+    const lengthRatio = Math.max(memory1.content.length, memory2.content.length) / 
+                       Math.min(memory1.content.length, memory2.content.length);
+    
+    if (lengthRatio > 2 && 
+        (quality1.actionableItems > quality2.actionableItems * 2 || 
+         quality2.actionableItems > quality1.actionableItems * 2)) {
+      return 'hierarchical';
+    }
+
+    // Consolidation: Similar content with overlapping information
+    const similarity = this.calculateContentSimilarity(memory1.content, memory2.content);
+    if (similarity > 0.7) {
+      return 'consolidation';
+    }
+
+    return null;
+  }
+
+  /**
+   * Identify the primary focus/theme of content
+   */
+  private identifyContentFocus(content: string): string {
+    const focuses = {
+      'tdd': ['tdd', 'test', 'testing', 'regression'],
+      'git': ['git', 'commit', 'workflow', 'approval'],
+      'memory': ['memory', 'curation', 'storage'],
+      'startup': ['startup', 'protocol', 'session'],
+      'constraints': ['critical', 'mandatory', 'forbidden', 'never'],
+      'workflow': ['workflow', 'process', 'procedure', 'step'],
+      'mcp': ['mcp', 'tool', 'integration'],
+    };
+
+    let maxScore = 0;
+    let primaryFocus = 'general';
+
+    for (const [focus, keywords] of Object.entries(focuses)) {
+      const score = keywords.reduce((sum, keyword) => {
+        const matches = (content.match(new RegExp(keyword, 'gi')) || []).length;
+        return sum + matches;
+      }, 0);
+
+      if (score > maxScore) {
+        maxScore = score;
+        primaryFocus = focus;
+      }
+    }
+
+    return primaryFocus;
+  }
+
+  /**
+   * Generate merger recommendation with preview
+   */
+  private generateMergerRecommendation(
+    memory1: Memory,
+    memory2: Memory,
+    strategy: string,
+    similarity: number,
+    quality1: ContentQualityMetrics,
+    quality2: ContentQualityMetrics
+  ): MergerRecommendation {
+    
+    // Determine primary and secondary based on quality and recency
+    const isPrimary1 = this.determinePrimaryMemory(memory1, memory2, quality1, quality2, strategy);
+    const primary = isPrimary1 ? memory1 : memory2;
+    const secondary = isPrimary1 ? memory2 : memory1;
+    const primaryQuality = isPrimary1 ? quality1 : quality2;
+    const secondaryQuality = isPrimary1 ? quality2 : quality1;
+
+    // Generate evidence
+    const evidence = this.generateMergerEvidence(primary, secondary, primaryQuality, secondaryQuality, strategy);
+    
+    // Generate preview
+    const mergePreview = this.generateMergePreview(primary, secondary, strategy);
+    
+    // Generate reasoning
+    const reasoning = this.generateMergerReasoning(strategy, evidence);
+
+    // Calculate confidence based on strategy and quality differences
+    const confidence = this.calculateMergerConfidence(similarity, primaryQuality, secondaryQuality, strategy);
+
+    return {
+      action: 'merge',
+      primaryMemoryId: primary.memory_id,
+      secondaryMemoryId: secondary.memory_id,
+      strategy: strategy as any,
+      confidence,
+      evidence,
+      mergePreview,
+      reasoning
+    };
+  }
+
+  /**
+   * Determine which memory should be primary in merger
+   */
+  private determinePrimaryMemory(
+    memory1: Memory, 
+    memory2: Memory, 
+    quality1: ContentQualityMetrics, 
+    quality2: ContentQualityMetrics,
+    strategy: string
+  ): boolean {
+    
+    // For evolution strategy, prefer the one with more critical sections
+    if (strategy === 'evolution') {
+      if (quality1.criticalSections.length !== quality2.criticalSections.length) {
+        return quality1.criticalSections.length > quality2.criticalSections.length;
+      }
+    }
+
+    // For hierarchical, prefer the more detailed one
+    if (strategy === 'hierarchical') {
+      return quality1.actionableItems > quality2.actionableItems;
+    }
+
+    // Default: prefer newer with better structure
+    const isNewer1 = new Date(memory1.created_at).getTime() > new Date(memory2.created_at).getTime();
+    const hasMoreStructure1 = quality1.structuralElements > quality2.structuralElements;
+    
+    // If similar structure, prefer newer; if different structure, prefer better structured
+    if (Math.abs(quality1.structuralElements - quality2.structuralElements) <= 1) {
+      return isNewer1;
+    } else {
+      return hasMoreStructure1;
+    }
+  }
+
+  /**
+   * Generate evidence for why merger is recommended
+   */
+  private generateMergerEvidence(
+    primary: Memory,
+    secondary: Memory,
+    primaryQuality: ContentQualityMetrics,
+    secondaryQuality: ContentQualityMetrics,
+    strategy: string
+  ): string[] {
+    const evidence: string[] = [];
+    
+    if (strategy === 'evolution') {
+      const criticalDiff = primaryQuality.criticalSections.length - secondaryQuality.criticalSections.length;
+      if (criticalDiff > 0) {
+        evidence.push(`Primary has ${criticalDiff} additional critical sections`);
+      }
+      evidence.push('Both memories cover same topic with evolutionary improvements');
+    }
+    
+    if (strategy === 'combination') {
+      evidence.push('Memories focus on complementary aspects of same domain');
+      evidence.push('Combining would create more comprehensive guidance');
+    }
+    
+    if (strategy === 'hierarchical') {
+      const actionableDiff = Math.abs(primaryQuality.actionableItems - secondaryQuality.actionableItems);
+      evidence.push(`Significant difference in detail level (${actionableDiff} more actionable items)`);
+    }
+    
+    if (strategy === 'consolidation') {
+      evidence.push('Substantial content overlap with some unique elements in each');
+    }
+
+    // Add structural evidence
+    const structuralDiff = Math.abs(primaryQuality.structuralElements - secondaryQuality.structuralElements);
+    if (structuralDiff > 2) {
+      evidence.push(`Different organizational approaches (${structuralDiff} structural element difference)`);
+    }
+
+    return evidence;
+  }
+
+  /**
+   * Generate a preview of what the merged content would look like
+   */
+  private generateMergePreview(primary: Memory, secondary: Memory, strategy: string): string {
+    const primaryTitle = this.extractTitle(primary.content) || 'Primary Memory';
+    const secondaryTitle = this.extractTitle(secondary.content) || 'Secondary Memory';
+    
+    switch (strategy) {
+      case 'evolution':
+        return `Enhanced "${primaryTitle}" with integrated elements from "${secondaryTitle}"`;
+      
+      case 'combination':
+        return `Comprehensive guide combining "${primaryTitle}" and "${secondaryTitle}" aspects`;
+      
+      case 'hierarchical':
+        return `"${primaryTitle}" with detailed implementation from "${secondaryTitle}"`;
+      
+      case 'consolidation':
+        return `Consolidated "${primaryTitle}" eliminating redundancy with "${secondaryTitle}"`;
+      
+      default:
+        return `Merged content from "${primaryTitle}" and "${secondaryTitle}"`;
+    }
+  }
+
+  /**
+   * Generate reasoning for merger recommendation
+   */
+  private generateMergerReasoning(strategy: string, evidence: string[]): string {
+    const base = `${strategy.charAt(0).toUpperCase() + strategy.slice(1)} merger recommended: `;
+    return base + evidence.join('; ');
+  }
+
+  /**
+   * Calculate confidence score for merger recommendation
+   */
+  private calculateMergerConfidence(
+    similarity: number,
+    primaryQuality: ContentQualityMetrics,
+    secondaryQuality: ContentQualityMetrics,
+    strategy: string
+  ): number {
+    let confidence = similarity; // Base on content similarity
+    
+    // Boost confidence for clear quality improvements
+    const qualityRatio = Math.max(
+      primaryQuality.criticalSections.length / Math.max(secondaryQuality.criticalSections.length, 1),
+      primaryQuality.structuralElements / Math.max(secondaryQuality.structuralElements, 1)
+    );
+    
+    if (qualityRatio > 1.5) confidence += 0.15;
+    if (qualityRatio > 2) confidence += 0.1;
+    
+    // Strategy-specific adjustments
+    if (strategy === 'evolution') confidence += 0.1;
+    if (strategy === 'combination') confidence += 0.05;
+    
+    return Math.min(0.95, Math.max(0.6, confidence));
+  }
+
+  // ENHANCED DELETION METHODS
+
+  /**
+   * Enhanced superseded detection with content quality analysis
+   */
+  private detectSupersededVersionsEnhanced(memory: Memory, allMemories: Memory[]): DeletionRecommendation | null {
+    // Look for memories with similar titles - versions of the same document
+    const memoryTitle = this.extractTitle(memory.content);
+    if (!memoryTitle) return null;
+
+    const similarMemories = allMemories.filter(m => {
+      if (m.memory_id === memory.memory_id) return false;
+      const otherTitle = this.extractTitle(m.content);
+      if (!otherTitle) return false;
+      
+      return this.areSimilarTitles(memoryTitle, otherTitle);
+    });
+
+    if (similarMemories.length === 0) return null;
+
+    // Check for content quality regression
+    const memoryQuality = this.calculateContentQualityMetrics(memory.content);
+    
+    for (const similar of similarMemories) {
+      const similarQuality = this.calculateContentQualityMetrics(similar.content);
+      
+      // If this memory is missing critical content present in similar memory, it's superseded
+      const hasCriticalRegression = 
+        memoryQuality.criticalSections.length < similarQuality.criticalSections.length &&
+        similarQuality.criticalSections.length > 0;
+      
+      if (hasCriticalRegression) {
+        return {
+          memoryId: memory.memory_id,
+          reason: 'superseded',
+          confidence: 0.92,
+          evidence: [
+            `Superseded by memory ${similar.memory_id} with enhanced content`,
+            `Missing ${similarQuality.criticalSections.length - memoryQuality.criticalSections.length} critical sections present in newer version`
+          ],
+          safeToDelete: true
+        };
+      }
+    }
+
+    // Fall back to original chronological logic
+    return this.detectSupersededVersions(memory, allMemories);
   }
 
   private detectSupersededVersions(memory: Memory, allMemories: Memory[]): DeletionRecommendation | null {
@@ -734,6 +1182,7 @@ export class AnalyzeMemoryQualityTool extends BaseMCPTool {
       },
       recommendations: [
         issueCountsBySeverity.critical > 0 ? `🚨 ${issueCountsBySeverity.critical} critical issues need immediate attention` : null,
+        deletionAnalysis && deletionAnalysis.mergerRecommendations.length > 0 ? `🔄 ${deletionAnalysis.mergerRecommendations.length} memories can be intelligently merged` : null,
         issueCountsByType.duplicate > 0 ? `🔄 ${issueCountsByType.duplicate} duplicate memories could be merged` : null,
         issueCountsByType.broken_path > 0 ? `📁 ${issueCountsByType.broken_path} broken file paths need updating` : null,
         issueCountsByType.outdated_code > 0 ? `⏰ ${issueCountsByType.outdated_code} memories have outdated code references` : null,
@@ -749,11 +1198,12 @@ export class AnalyzeMemoryQualityTool extends BaseMCPTool {
       detailedAnalyses: analyses
     };
 
-    // Add deletion analysis if provided
+    // Add deletion and merger analysis if provided
     if (deletionAnalysis) {
       return {
         ...baseReport,
         deletionRecommendations: deletionAnalysis.deletionRecommendations,
+        mergerRecommendations: deletionAnalysis.mergerRecommendations,
         deletionSummary: {
           totalAnalyzed: deletionAnalysis.totalAnalyzed,
           safeDeletionCount: deletionAnalysis.safeDeletionCount,
@@ -762,6 +1212,15 @@ export class AnalyzeMemoryQualityTool extends BaseMCPTool {
             testArtifacts: deletionAnalysis.deletionRecommendations.filter(r => r.reason === 'test-artifact').length,
             duplicates: deletionAnalysis.deletionRecommendations.filter(r => r.reason === 'duplicate').length,
             obsolete: deletionAnalysis.deletionRecommendations.filter(r => r.reason === 'obsolete').length
+          }
+        },
+        mergerSummary: {
+          totalOpportunities: deletionAnalysis.mergerRecommendations.length,
+          strategyBreakdown: {
+            evolution: deletionAnalysis.mergerRecommendations.filter(r => r.strategy === 'evolution').length,
+            combination: deletionAnalysis.mergerRecommendations.filter(r => r.strategy === 'combination').length,
+            hierarchical: deletionAnalysis.mergerRecommendations.filter(r => r.strategy === 'hierarchical').length,
+            consolidation: deletionAnalysis.mergerRecommendations.filter(r => r.strategy === 'consolidation').length
           }
         }
       };
