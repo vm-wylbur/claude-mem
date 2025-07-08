@@ -45,6 +45,19 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 }
 
 /**
+ * Generate embeddings with fallback for resilience
+ * Returns null if embedding generation fails, allowing storage without vectors
+ */
+export async function generateEmbeddingWithFallback(text: string): Promise<number[] | null> {
+    try {
+        return await generateEmbedding(text);
+    } catch (error) {
+        console.warn('Embedding generation failed, storing without vector:', error);
+        return null;
+    }
+}
+
+/**
  * Store an embedding in the database
  */
 export function storeEmbedding(db: Database.Database, vector: number[]): number {

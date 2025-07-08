@@ -10,7 +10,7 @@ import fs from 'fs';
 // Removed: SSH tunnel imports no longer needed
 import { DatabaseAdapter, DatabaseConfig, DatabaseConnectionError, DatabaseConnectionInfo } from './base.js';
 import { MemoryType, MemoryMetadata, Memory } from '../service.js';
-import { generateEmbedding } from '../../embeddings.js';
+import { generateEmbedding, generateEmbeddingWithFallback } from '../../embeddings.js';
 import { generateMemoryHash, generateTagHash, initializeHasher } from '../../utils/hash.js';
 
 const { Pool } = pg;
@@ -222,10 +222,10 @@ export class PostgresAdapter implements DatabaseAdapter {
       // Generate hash-based memory ID
       const memoryId = generateMemoryHash(content, type);
 
-      // Generate embedding for content
-      const vector = await generateEmbedding(content);
+      // Generate embedding for content with fallback
+      const vector = await generateEmbeddingWithFallback(content);
       
-      // Store memory with hash ID and vector embedding
+      // Store memory with hash ID and optional vector embedding
       const result = await client.query(`
         INSERT INTO memories (memory_id, project_id, content, content_type, metadata, embedding)
         VALUES ($1, $2, $3, $4, $5, $6)
@@ -238,11 +238,58 @@ export class PostgresAdapter implements DatabaseAdapter {
         content,
         type,
         JSON.stringify(metadata),
-        JSON.stringify(vector) // Store as JSONB array for pgvector
+        vector ? JSON.stringify(vector) : null // Store as JSONB array for pgvector, or null
       ]);
 
       await client.query('COMMIT');
       return result.rows[0].memory_id;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async storeMemoryWithEmbeddingStatus(
+    content: string,
+    type: MemoryType,
+    metadata: MemoryMetadata,
+    projectId: string
+  ): Promise<{memoryId: string; hasEmbedding: boolean}> {
+    if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
+
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Generate hash-based memory ID
+      const memoryId = generateMemoryHash(content, type);
+
+      // Generate embedding for content with fallback
+      const vector = await generateEmbeddingWithFallback(content);
+      
+      // Store memory with hash ID and optional vector embedding
+      const result = await client.query(`
+        INSERT INTO memories (memory_id, project_id, content, content_type, metadata, embedding)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (memory_id) DO UPDATE SET
+          updated_at = CURRENT_TIMESTAMP
+        RETURNING memory_id
+      `, [
+        memoryId,
+        projectId,
+        content,
+        type,
+        JSON.stringify(metadata),
+        vector ? JSON.stringify(vector) : null
+      ]);
+
+      await client.query('COMMIT');
+      return {
+        memoryId: result.rows[0].memory_id,
+        hasEmbedding: vector !== null
+      };
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -308,11 +355,11 @@ export class PostgresAdapter implements DatabaseAdapter {
       const queryVector = await generateEmbedding(content);
       
       // Use pgvector cosine distance for similarity search
-      let whereClause = '';
+      let whereClause = 'WHERE embedding IS NOT NULL';
       let params: any[] = [JSON.stringify(queryVector), limit];
       
       if (projectId) {
-        whereClause = 'WHERE project_id = $3';
+        whereClause += ' AND project_id = $3';
         params.push(projectId);
       }
 
