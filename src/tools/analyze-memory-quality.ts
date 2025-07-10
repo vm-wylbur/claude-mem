@@ -12,7 +12,7 @@ import * as path from 'path';
 import * as os from 'os';
 
 export interface MemoryQualityIssue {
-  type: 'outdated_code' | 'broken_path' | 'duplicate' | 'inconsistent' | 'low_quality';
+  type: 'outdated_code' | 'broken_path' | 'duplicate' | 'inconsistent' | 'low_quality' | 'gap' | 'enhancement' | 'pattern' | 'risk' | 'connection' | 'analysis-error' | 'parsing-error';
   severity: 'low' | 'medium' | 'high' | 'critical';
   description: string;
   suggestion?: string;
@@ -1146,12 +1146,16 @@ export class AnalyzeMemoryQualityTool extends BaseMCPTool {
   private generateQualityReport(analyses: MemoryQualityAnalysis[], totalMemories: number, deletionAnalysis?: DeletionAnalysis) {
     const avgScore = analyses.reduce((sum, a) => sum + a.qualityScore, 0) / analyses.length;
     const issueCountsBySeverity = { critical: 0, high: 0, medium: 0, low: 0 };
-    const issueCountsByType = { outdated_code: 0, broken_path: 0, duplicate: 0, inconsistent: 0, low_quality: 0 };
+    const issueCountsByType: Record<string, number> = { outdated_code: 0, broken_path: 0, duplicate: 0, inconsistent: 0, low_quality: 0, gap: 0, enhancement: 0, pattern: 0, risk: 0, connection: 0, 'analysis-error': 0, 'parsing-error': 0 };
 
     for (const analysis of analyses) {
       for (const issue of analysis.issues) {
         issueCountsBySeverity[issue.severity]++;
-        issueCountsByType[issue.type]++;
+        if (issueCountsByType[issue.type] !== undefined) {
+          issueCountsByType[issue.type]++;
+        } else {
+          issueCountsByType[issue.type] = 1;
+        }
       }
     }
 

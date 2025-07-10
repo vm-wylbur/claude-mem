@@ -20,6 +20,8 @@ import { SearchEnhancedTool } from './tools/search-enhanced.js';
 import { GetAllTagsTool } from './tools/get-all-tags.js';
 import { ListMemoriesByTagTool } from './tools/list-memories-by-tag.js';
 import { AnalyzeMemoryQualityTool } from './tools/analyze-memory-quality.js';
+import { MultiAIAnalyzeMemoryQualityTool } from './tools/multi-ai-analyze-memory-quality.js';
+import { InteractiveCuratorTool } from './tools/interactive-curator.js';
 
 // Auto-detection utility for memory types
 function detectMemoryType(content: string): MemoryType {
@@ -162,7 +164,8 @@ const server = new McpServer({
             'search-enhanced': true,
             'get-all-tags': true,
             'list-memories-by-tag': true,
-            'analyze-memory-quality': true
+            'analyze-memory-quality': true,
+            'multi-ai-analyze-memory-quality': true
         }
     }
 });
@@ -179,6 +182,8 @@ const searchEnhancedTool = new SearchEnhancedTool(dbService, formatHashForDispla
 const getAllTagsTool = new GetAllTagsTool(dbService);
 const listMemoriesByTagTool = new ListMemoriesByTagTool(dbService, formatHashForDisplay);
 const analyzeMemoryQualityTool = new AnalyzeMemoryQualityTool(dbService);
+const multiAIAnalyzeMemoryQualityTool = new MultiAIAnalyzeMemoryQualityTool(dbService, true);
+const interactiveCuratorTool = new InteractiveCuratorTool(dbService);
 
 // Add comprehensive overview tool - the go-to starting point for new Claude sessions
 server.tool(
@@ -350,6 +355,44 @@ server.tool(
     },
     async (params) => {
         return analyzeMemoryQualityTool.handle(params);
+    }
+);
+
+// Add multi-AI memory quality analyzer tool
+server.tool(
+    'multi-ai-analyze-memory-quality',
+    'EXPERIMENTAL: Analyze memory quality using multiple specialized AI agents with consensus-based decision making. Provides enhanced pattern recognition, consensus confidence scoring, and multi-perspective analysis.',
+    {
+        memoryId: z.string().optional().describe('Analyze specific memory by ID'),
+        projectId: z.string().optional().describe('Analyze all memories in project'),
+        codebaseRoot: z.string().optional().describe('Path to codebase for reality checking'),
+        includeCodeCheck: z.boolean().optional().default(true).describe('Whether to check against current code'),
+        limit: z.number().optional().default(50).describe('Max memories to analyze')
+    },
+    async (params) => {
+        return multiAIAnalyzeMemoryQualityTool.handle(params);
+    }
+);
+
+// Add interactive memory curator for triage-based memory management
+server.tool(
+    'interactive-curator',
+    'Interactive memory curation system with triage workflow for handling multi-AI analysis recommendations. Uses session-based state management for efficient decision-making and batch actions.',
+    {
+        command: z.enum(['start', 'next', 'details', 'queue', 'status', 'mode', 'execute']).describe('Command to execute'),
+        action: z.enum(['y', 'n', 's']).optional().describe('Triage action: y=queue, n=reject, s=skip'),
+        mode: z.enum(['all', 'delete', 'connect', 'enhance', 'extract-pattern']).optional().describe('Triage mode to switch to'),
+        sessionFile: z.string().optional().describe('Path to session file (default: .curation_session.json)'),
+        limit: z.number().optional().default(50).describe('Number of memories to analyze'),
+        includeCodeCheck: z.boolean().optional().default(true).describe('Include code reality checking'),
+        codebaseRoot: z.string().optional().describe('Path to codebase root'),
+        subCommand: z.enum(['status', 'view', 'clear', 'unqueue']).optional().describe('Queue management sub-command'),
+        queueType: z.enum(['deletions', 'connections', 'enhancements', 'patterns']).optional().describe('Queue type for view/clear operations'),
+        itemId: z.string().optional().describe('Item ID for unqueue operation'),
+        confirm: z.boolean().optional().describe('Confirmation flag for execution')
+    },
+    async (params) => {
+        return interactiveCuratorTool.handle(params);
     }
 );
 
