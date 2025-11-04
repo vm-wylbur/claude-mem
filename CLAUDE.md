@@ -27,55 +27,15 @@ dotfiles/ai/docs/meta-CLAUDE.md
 
 ---
 
-## GIT WORKFLOW - MANDATORY
+## SKILLS - PROCEDURAL WORKFLOWS
 
-### Commit Approval
-- **NEVER commit without explicit approval from PB**
-- Always ask: "Should we commit this?" before `git commit`
-- PB must explicitly say "let's commit" or similar
-- Exploratory git commands (status, diff, log) allowed without approval
+The following workflows are handled by Claude Code skills in `~/.claude/skills/`:
 
-### Commit Message Format
-```
-Brief descriptive title
+- **commit** - Git commit workflow with message format enforcement
+- **code-change-approval** - File modification approval and change verification
+- **new-file** - New file creation with proper headers and comment formats
 
-Optional body explaining why/what changed
-
-By PB & Claude
-```
-**NEVER include**: "Co-authored-by:" lines or tool attribution
-
----
-
-## CODE CHANGE APPROVAL - SIMPLIFIED RULES
-
-### Permission Required
-- **File modifications** (edit, write, create) → Ask approval first
-- **Destructive operations** (rm, mv, chmod, installs) → Ask approval + suggest dry-run
-- **Git commits** → Ask: "Should we commit this?"
-
-### No Permission Needed
-- **Exploratory commands** (ls, find, grep, cat, git status/diff/log)
-
-### Code Changes
-- **Existing files** → "I propose changing X in file Y. Proceed?"
-- **New files** → "Should I create new file X for Y purpose?"
-- **Always check for existing functionality first**
-
----
-
-## FILE HEADER STANDARDS
-
-Use language-specific comment format:
-```python
-# Author: PB and Claude
-# Date: 2025-06-30  (code) or Mon 30 Jun 2025 (docs)
-# License: (c) HRDAG, 2025, GPL-2 or newer
-#
-# ------
-# project-root/path/to/file
-```
-hint: what's markdown's comment format? Not `#`. 
+These skills activate automatically when relevant actions are detected.
 
 ---
 
