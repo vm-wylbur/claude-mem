@@ -4,27 +4,42 @@
 - Memory system populated with 526 memories (31 from ~/docs lessons-learned)
 - Database migrated to Aiven PostgreSQL (accessible from anywhere)
 - Automated daily backups to /data/cold/claude-mem
+- postgres-mcp MCP server installed (user-wide)
+- PostgreSQL optimization skill created and installed
+
+---
+
+## Completed
+
+✅ **PostgreSQL optimization skill** (2025-11-04)
+   - Three-tier architecture: postgres-mcp MCP server + skill + memory knowledge
+   - Workflow: Research (search memory) → Analysis (postgres-mcp tools) → Synthesis → Implementation → Documentation
+   - Tools: analyze_db_health, get_top_queries, explain_query, analyze_workload_indexes, execute_sql
+   - Safety: Read-only by default, confirmation required for DDL
+   - Documented MCP server installation process (docs/mcp-server-installation-notes.md)
+   - Ready for testing in fresh Claude Code session
 
 ---
 
 ## Next Steps - Memory-Augmented Development
 
-1. **Invoke the memory-augmented-dev skill** to see how it works with our newly populated memory system
+1. **Test the postgres-optimization skill** in new Claude Code session
+   - Verify postgres-mcp tools are accessible
+   - Run database health check on Aiven claude_mem database
+   - Document optimization workflow effectiveness
+   - Store first optimization learnings in memory
+
+2. **Invoke the memory-augmented-dev skill** on real development tasks
    - Test retrieval of relevant learnings during development tasks
    - Validate semantic search quality with real technical queries
    - Assess whether memories provide useful context for coding decisions
 
-2. **Review/improve existing skills** in ~/.claude/skills/
-   - Audit memory-augmented-dev skill implementation
-   - Consider additional skills that could leverage the memory system
-   - Document best practices for skill-memory integration
-
-3. **Create new skills** based on extracted learnings
+3. **Create additional skills** based on extracted learnings
    - Data recovery best practices skill (hardware, filesystems, tools)
    - ZFS administration skill (recordsize, special vdevs, ashift)
-   - PostgreSQL optimization skill (indexing, large-scale queries)
+   - MCP server installation skill (based on postgres-mcp installation notes)
 
-4. **Test the memory-augmented-dev skill** on an actual development task
+4. **Test skill effectiveness** across multiple sessions
    - Real-world validation of memory retrieval relevance
    - Measure impact on development velocity and decision quality
    - Identify gaps in current memory coverage
@@ -57,4 +72,4 @@ This is a longer-term enhancement to the memory quality analysis system using sp
 
 ---
 
-**Last Updated:** 2025-11-03
+**Last Updated:** 2025-11-04
