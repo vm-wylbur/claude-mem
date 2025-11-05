@@ -1,6 +1,9 @@
 # claude-mem TODO
 
-**Current Status:** Memory system now populated with 31 lessons-learned from ~/docs
+**Current Status:**
+- Memory system populated with 526 memories (31 from ~/docs lessons-learned)
+- Database migrated to Aiven PostgreSQL (accessible from anywhere)
+- Automated daily backups to /data/cold/claude-mem
 
 ---
 

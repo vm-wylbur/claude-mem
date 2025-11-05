@@ -231,6 +231,46 @@ npm run build
 
 Claude Code will automatically use the updated compiled code in subsequent sessions.
 
+## Skills
+
+Claude Code skills enhance development workflows by automating common patterns. This project includes a **memory-augmented-dev** skill that integrates with the MCP memory server.
+
+### Installing Skills
+
+Skills are installed at the **user level** (not per-project):
+
+```bash
+# Copy the memory-augmented development skill
+cp -r skills/memory-augmented-dev ~/.claude/skills/
+
+# Verify installation
+ls -la ~/.claude/skills/
+```
+
+### memory-augmented-dev Skill
+
+**Purpose:** Search memory before coding, apply past learnings, document new work
+
+**Activates when:** Implementing features, fixing bugs, refactoring code
+
+**Workflow:**
+1. **Research Phase:** Searches memory for relevant patterns and past decisions
+2. **Implementation Phase:** Applies established patterns and avoids documented mistakes
+3. **Documentation Phase:** Stores new learnings with rich metadata for future reference
+
+**Example:**
+```
+User: "Add JWT authentication to the API"
+
+Skill automatically:
+1. Searches memory for past auth implementations
+2. Reviews past security decisions
+3. Suggests applying established patterns
+4. After completion, stores the implementation details
+```
+
+See `skills/README.md` for more details on available skills and usage.
+
 ## Contributing
 
 Contributions are welcome! Please ensure you:
