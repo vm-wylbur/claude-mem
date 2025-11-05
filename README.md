@@ -178,6 +178,59 @@ claude-mem/
 └── tsconfig.json       # TypeScript configuration
 ```
 
+## Configuring as a User-Wide MCP Server
+
+### Lessons Learned: Making claude-mem Available Across All Projects
+
+To make the claude-mem MCP server available across all your Claude Code sessions (not just in the project directory), you need to configure it at the **user scope** rather than project scope.
+
+#### Key Insights
+
+1. **Configuration Location**: Claude Code stores user-wide MCP configurations in `~/.claude.json` (not `~/.config/claude-code/` as some documentation suggests for Linux)
+
+2. **The Right Tool**: Use the `claude mcp add` command with the `--scope user` flag rather than manually editing JSON files
+
+3. **Build First**: Always build the project before adding it as an MCP server, since Claude Code will execute the compiled code from `dist/`
+
+#### Step-by-Step Process
+
+```bash
+# 1. Build the project
+cd ~/projects/claude-mem
+npm run build
+
+# 2. Add as user-wide MCP server using the CLI
+claude mcp add --transport stdio --scope user claude-mem -- node /home/pball/projects/claude-mem/dist/index.js
+
+# 3. Verify it's connected
+claude mcp list
+```
+
+#### What This Does
+
+The `claude mcp add` command:
+- Creates an entry in `~/.claude.json` under the `mcpServers` section
+- Configures the server to use stdio transport (required for local MCP servers)
+- Makes the server available to all Claude Code sessions, regardless of which directory you're working in
+- Validates the configuration and checks server connectivity
+
+#### Verification
+
+After adding, you should see claude-mem in the output of `claude mcp list`:
+```
+claude-mem: node /home/pball/projects/claude-mem/dist/index.js - ✓ Connected
+```
+
+#### After Code Changes
+
+Remember to rebuild whenever you modify the source code:
+```bash
+cd ~/projects/claude-mem
+npm run build
+```
+
+Claude Code will automatically use the updated compiled code in subsequent sessions.
+
 ## Contributing
 
 Contributions are welcome! Please ensure you:
