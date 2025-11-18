@@ -22,6 +22,7 @@ import { ListMemoriesByTagTool } from './tools/list-memories-by-tag.js';
 import { AnalyzeMemoryQualityTool } from './tools/analyze-memory-quality.js';
 import { MultiAIAnalyzeMemoryQualityTool } from './tools/multi-ai-analyze-memory-quality.js';
 import { InteractiveCuratorTool } from './tools/interactive-curator.js';
+import { SyncDocsTool } from './tools/sync-docs.js';
 
 // Auto-detection utility for memory types
 function detectMemoryType(content: string): MemoryType {
@@ -184,6 +185,7 @@ const listMemoriesByTagTool = new ListMemoriesByTagTool(dbService, formatHashFor
 const analyzeMemoryQualityTool = new AnalyzeMemoryQualityTool(dbService);
 const multiAIAnalyzeMemoryQualityTool = new MultiAIAnalyzeMemoryQualityTool(dbService, true);
 const interactiveCuratorTool = new InteractiveCuratorTool(dbService);
+const syncDocsTool = new SyncDocsTool(dbService);
 
 // Add comprehensive overview tool - the go-to starting point for new Claude sessions
 server.tool(
@@ -393,6 +395,19 @@ server.tool(
     },
     async (params) => {
         return interactiveCuratorTool.handle(params);
+    }
+);
+
+// Add sync-docs tool for ingesting markdown documentation
+server.tool(
+    'sync-docs',
+    'Sync markdown documentation from ~/docs and project docs/ directories to lessons_learned_docs table. Detects new and updated files using content hashing.',
+    {
+        directories: z.array(z.string()).optional().describe('Directories to scan for *.md files (default: ~/docs and $PWD/docs)'),
+        forceUpdate: z.boolean().optional().default(false).describe('Re-ingest all files even if unchanged (default: false)')
+    },
+    async (params) => {
+        return syncDocsTool.handle(params);
     }
 );
 

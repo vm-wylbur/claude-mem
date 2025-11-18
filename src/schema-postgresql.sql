@@ -53,3 +53,32 @@ CREATE INDEX IF NOT EXISTS idx_memories_embedding_cosine ON memories USING hnsw 
 
 -- Additional vector indexes for different distance metrics
 CREATE INDEX IF NOT EXISTS idx_memories_embedding_l2 ON memories USING hnsw (embedding vector_l2_ops);
+
+-- ==============================================================================
+-- Lessons-Learned Documentation Storage
+-- ==============================================================================
+-- Simple 2-layer approach:
+-- Layer 1: Full documentation files (reference/source of truth)
+-- Layer 2: Extracted insights in memories table (searchable knowledge)
+
+-- Full documentation files (lessons-learned markdown docs)
+CREATE TABLE IF NOT EXISTS lessons_learned_docs (
+    doc_id TEXT PRIMARY KEY,                -- blake3 hash of filepath
+    filename TEXT NOT NULL,                 -- "bad-recovery-drive.md"
+    filepath TEXT NOT NULL UNIQUE,          -- "/home/pball/docs/bad-recovery-drive.md"
+    content TEXT NOT NULL,                  -- Full markdown content
+    file_mtime TIMESTAMPTZ NOT NULL,       -- Source file modification time
+    doc_hash TEXT NOT NULL,                 -- blake3 hash of content for change detection
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    metadata JSONB DEFAULT '{}'             -- {word_count, extracted_insights_count, topics}
+);
+
+-- Link memories to source documentation
+ALTER TABLE memories ADD COLUMN IF NOT EXISTS source_doc_id TEXT REFERENCES lessons_learned_docs(doc_id);
+
+-- Performance indexes
+CREATE INDEX IF NOT EXISTS idx_docs_filepath ON lessons_learned_docs(filepath);
+CREATE INDEX IF NOT EXISTS idx_docs_created_at ON lessons_learned_docs(created_at);
+CREATE INDEX IF NOT EXISTS idx_docs_file_mtime ON lessons_learned_docs(file_mtime);
+CREATE INDEX IF NOT EXISTS idx_docs_doc_hash ON lessons_learned_docs(doc_hash);
+CREATE INDEX IF NOT EXISTS idx_memories_source_doc_id ON memories(source_doc_id);
