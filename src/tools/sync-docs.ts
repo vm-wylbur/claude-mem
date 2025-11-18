@@ -144,11 +144,9 @@ export class SyncDocsTool extends BaseMCPTool<SyncDocsParams> {
     };
 
     // Get existing docs from database
-    const existingDocs = await this.dbService.db.all(
-      'SELECT doc_id, filepath, doc_hash, file_mtime FROM lessons_learned_docs'
-    );
+    const existingDocs = await this.dbService.getLessonsLearnedDocs();
 
-    const existingMap = new Map(existingDocs.map((d: any) => [d.filepath, d]));
+    const existingMap = new Map(existingDocs.map((d) => [d.filepath, d]));
 
     for (const file of files) {
       const existing = existingMap.get(file.filepath);
@@ -175,25 +173,16 @@ export class SyncDocsTool extends BaseMCPTool<SyncDocsParams> {
       // Count words for metadata
       const wordCount = doc.content.split(/\\s+/).length;
 
-      // Upsert document (INSERT ON CONFLICT UPDATE)
-      await this.dbService.db.run(
-        `INSERT INTO lessons_learned_docs (doc_id, filename, filepath, content, file_mtime, doc_hash, metadata)
-         VALUES (?, ?, ?, ?, ?, ?, json(?))
-         ON CONFLICT(filepath) DO UPDATE SET
-           content = excluded.content,
-           file_mtime = excluded.file_mtime,
-           doc_hash = excluded.doc_hash,
-           metadata = excluded.metadata`,
-        [
-          doc.doc_id,
-          doc.filename,
-          doc.filepath,
-          doc.content,
-          doc.mtime.toISOString(),
-          doc.doc_hash,
-          JSON.stringify({ word_count: wordCount })
-        ]
-      );
+      // Upsert document using DatabaseService method
+      await this.dbService.upsertLessonsLearnedDoc({
+        doc_id: doc.doc_id,
+        filename: doc.filename,
+        filepath: doc.filepath,
+        content: doc.content,
+        file_mtime: doc.mtime.toISOString(),
+        doc_hash: doc.doc_hash,
+        metadata: { word_count: wordCount }
+      });
 
       count++;
     }

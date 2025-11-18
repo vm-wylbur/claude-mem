@@ -313,4 +313,63 @@ export class DatabaseService {
     async disconnect(): Promise<void> {
         return this.adapter.disconnect();
     }
+
+    //
+    // Lessons-Learned Documentation Operations
+    //
+
+    /**
+     * Get all lessons-learned documents from the database
+     * Returns basic metadata for change detection (filepath, doc_hash)
+     */
+    async getLessonsLearnedDocs(): Promise<Array<{filepath: string; doc_hash: string; doc_id: string; file_mtime: string}>> {
+        const adapter = this.adapter as any;
+        if (!adapter.pool) {
+            throw new Error('PostgreSQL adapter not connected');
+        }
+
+        const client = await adapter.pool.connect();
+        try {
+            const result = await client.query(
+                'SELECT doc_id, filepath, doc_hash, file_mtime FROM lessons_learned_docs'
+            );
+            return result.rows;
+        } finally {
+            client.release();
+        }
+    }
+
+    /**
+     * Upsert (insert or update) a lessons-learned document
+     */
+    async upsertLessonsLearnedDoc(doc: {
+        doc_id: string;
+        filename: string;
+        filepath: string;
+        content: string;
+        file_mtime: string;
+        doc_hash: string;
+        metadata: any;
+    }): Promise<void> {
+        const adapter = this.adapter as any;
+        if (!adapter.pool) {
+            throw new Error('PostgreSQL adapter not connected');
+        }
+
+        const client = await adapter.pool.connect();
+        try {
+            await client.query(
+                `INSERT INTO lessons_learned_docs (doc_id, filename, filepath, content, file_mtime, doc_hash, metadata)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)
+                 ON CONFLICT(filepath) DO UPDATE SET
+                   content = EXCLUDED.content,
+                   file_mtime = EXCLUDED.file_mtime,
+                   doc_hash = EXCLUDED.doc_hash,
+                   metadata = EXCLUDED.metadata`,
+                [doc.doc_id, doc.filename, doc.filepath, doc.content, doc.file_mtime, doc.doc_hash, JSON.stringify(doc.metadata)]
+            );
+        } finally {
+            client.release();
+        }
+    }
 }
