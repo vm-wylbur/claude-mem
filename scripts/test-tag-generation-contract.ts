@@ -27,7 +27,7 @@ async function generateSmartTags(content: string, type: string): Promise<string[
     'typescript': /\b(typescript|\.ts|\.tsx)\b/,
     'javascript': /\b(javascript|\.js|\.jsx|node\.js)\b/,
     'react': /\b(react|jsx|component|hook|useState|useEffect)\b/,
-    'database': /\b(database|db|sql|postgres|sqlite|query|table)\b/,
+    'database': /\b(database|db|sql|postgres|query|table)\b/,
     'api': /\b(api|endpoint|rest|graphql|http|request|response)\b/,
     'testing': /\b(test|spec|jest|mocha|cypress|unit test|integration)\b/,
     'git': /\b(git|commit|branch|merge|pull request|pr)\b/,

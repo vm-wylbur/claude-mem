@@ -36,7 +36,7 @@ src/
 │   ├── error-response.ts          # ✅ Eliminated 33+ duplicate patterns
 │   └── hash.ts                    # ✅ Fully tested
 ├── db/              # Database layer
-│   ├── adapters/                  # ✅ PostgreSQL & SQLite adapters
+│   ├── adapters/                  # ✅ PostgreSQL adapter
 │   └── service.ts                 # ✅ Fully tested
 └── index.ts         # ✅ Clean MCP server entry point
 ```
@@ -54,7 +54,7 @@ src/
 - Reduced main index.ts by 58%
 
 ### ✅ Phase 3: Database Architecture
-- PostgreSQL and SQLite adapters properly structured
+- PostgreSQL adapter with pgvector properly structured
 - Centralized configuration management
 - Type-safe database operations
 
@@ -80,8 +80,7 @@ src/
 - **Schema**: Zod validation for all inputs
 
 ### Database Support
-- **Primary**: PostgreSQL with pgvector (semantic search)
-- **Fallback**: SQLite with basic text search
+- **Database**: PostgreSQL with pgvector (semantic search)
 - **Features**: Hash-based IDs, JSONB metadata, vector embeddings
 
 ### Development Quality

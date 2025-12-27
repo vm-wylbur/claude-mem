@@ -44,15 +44,15 @@ export interface Memory {
  * Key architectural benefits:
  * - Database-agnostic business logic
  * - Easy testing via adapter mocking
- * - Consistent API regardless of backend (SQLite vs PostgreSQL)
+ * - Consistent API for PostgreSQL backend
  * - Dependency inversion principle applied
  * 
  * @example
  * ```typescript
- * const adapter = new SqliteAdapter(config);
+ * const adapter = new PostgresAdapter(config);
  * await adapter.connect();
  * const service = new DatabaseService(adapter);
- * 
+ *
  * const memoryId = await service.storeDevMemory(content, type, metadata);
  * const similar = await service.findSimilarMemories(content, 5);
  * ```

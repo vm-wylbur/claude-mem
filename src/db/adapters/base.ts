@@ -9,8 +9,8 @@ import { MemoryType, MemoryMetadata, Memory } from '../service.js';
 
 /**
  * Database Adapter Interface for Memory Management System
- * 
- * Provides database abstraction layer supporting SQLite and PostgreSQL backends.
+ *
+ * Provides database abstraction layer for PostgreSQL backend.
  * Uses Repository + Adapter patterns for clean separation of database concerns.
  * 
  * @references
@@ -33,7 +33,7 @@ import { MemoryType, MemoryMetadata, Memory } from '../service.js';
  */
 // Diagnostic information interfaces
 export interface DatabaseConnectionInfo {
-  type: 'postgresql' | 'sqlite';
+  type: 'postgresql';
   host?: string;
   port?: number;
   database: string;
@@ -134,9 +134,8 @@ export interface DatabaseAdapter {
 
   /**
    * Find memories similar to given content using semantic search
-   * SQLite: Uses in-memory cosine similarity calculation
-   * PostgreSQL: Uses pgvector native similarity operations
-   * 
+   * Uses pgvector native similarity operations
+   *
    * @param content - Text to find similar memories for
    * @param limit - Maximum number of results to return
    * @param projectId - Optional project filter
@@ -235,16 +234,12 @@ export interface DatabaseAdapter {
 
 /**
  * Database connection configuration interface
- * Supports both SQLite and PostgreSQL configuration options
+ * PostgreSQL configuration options
  */
 export interface DatabaseConfig {
-  type: 'sqlite' | 'postgresql';
-  
-  sqlite?: {
-    path: string;
-  };
-  
-  postgresql?: {
+  type: 'postgresql';
+
+  postgresql: {
     hosts: string[];        // Database hosts for direct connection
     database: string;
     user: string;

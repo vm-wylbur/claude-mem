@@ -5,16 +5,7 @@
 # License: (c) HRDAG, 2025, GPL-2 or newer
 
 [database]
-# Database backend: 'sqlite' or 'postgresql' 
 type = "postgresql"
-
-[database.sqlite]
-# SQLite database file path (supports XDG Base Directory)
-path = "~/.local/share/mcp-memory/memory.db"
-# Auto-backup settings
-backup_enabled = true
-backup_path = "~/.local/share/mcp-memory/backups/"
-max_backup_files = 10
 
 [database.postgresql]
 # PostgreSQL connection settings - direct connection to managed PostgreSQL

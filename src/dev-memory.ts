@@ -23,22 +23,22 @@ export async function storeInitialProgress(db: DatabaseService): Promise<void> {
         {
             key_decisions: [
                 'Created project structure with TypeScript and ES modules',
-                'Set up SQLite database with schema for projects, memories, embeddings, and relationships',
+                'Set up PostgreSQL database with pgvector for projects, memories, embeddings, and relationships',
                 'Chose Ollama with nomic-embed-text for embeddings (768 dimensions)',
                 'Implemented development memory tracking system',
                 'Created DatabaseService class for database operations'
             ],
             implementation_status: 'setup',
             files_created: [
-                'src/db/init.ts - Database initialization',
                 'src/db/service.ts - Database service layer',
+                'src/db/adapters/postgres.ts - PostgreSQL adapter',
                 'src/dev-memory.ts - Development memory helpers',
-                'schema.sql - Database schema',
+                'schema-postgresql.sql - Database schema',
                 'package.json, tsconfig.json - Project configuration'
             ],
             dependencies_added: [
                 '@modelcontextprotocol/sdk@^1.7.0',
-                'better-sqlite3@^9.4.3',
+                'pg@^8.11.3',
                 'node-fetch@^3.3.2',
                 'zod@^3.22.4'
             ]

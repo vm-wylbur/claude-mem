@@ -1,5 +1,4 @@
 import fetch from 'node-fetch';
-import Database from 'better-sqlite3';
 
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
 const MODEL = 'nomic-embed-text';
@@ -58,30 +57,6 @@ export async function generateEmbeddingWithFallback(text: string): Promise<numbe
 }
 
 /**
- * Store an embedding in the database
- */
-export function storeEmbedding(db: Database.Database, vector: number[]): number {
-    const stmt = db.prepare(`
-        INSERT INTO embeddings (vector, dimensions)
-        VALUES (?, ?)
-    `);
-
-    // Convert vector to Buffer for BLOB storage
-    const buffer = Buffer.from(new Float64Array(vector).buffer);
-    const result = stmt.run(buffer, vector.length);
-
-    return result.lastInsertRowid as number;
-}
-
-/**
- * Convert a stored embedding back to a vector
- */
-export function bufferToVector(buffer: Buffer): number[] {
-    const float64Array = new Float64Array(buffer.buffer, buffer.byteOffset, buffer.length / 8);
-    return Array.from(float64Array);
-}
-
-/**
  * Calculate cosine similarity between two vectors
  */
 export function cosineSimilarity(a: number[], b: number[]): number {
@@ -100,33 +75,6 @@ export function cosineSimilarity(a: number[], b: number[]): number {
     }
 
     return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
-}
-
-/**
- * Find similar memories using cosine similarity
- */
-export function findSimilarMemories(
-    db: Database.Database, 
-    queryVector: number[], 
-    limit: number = 5,
-    similarityThreshold: number = 0.7
-): { memoryId: number; similarity: number }[] {
-    const memories = db.prepare(`
-        SELECT m.memory_id, e.vector 
-        FROM memories m
-        JOIN embeddings e ON m.embedding_id = e.embedding_id
-        WHERE e.vector IS NOT NULL
-    `).all();
-
-    const similarities = memories.map((memory: any) => ({
-        memoryId: memory.memory_id,
-        similarity: cosineSimilarity(queryVector, bufferToVector(memory.vector))
-    }));
-
-    return similarities
-        .filter(s => s.similarity >= similarityThreshold)
-        .sort((a, b) => b.similarity - a.similarity)
-        .slice(0, limit);
 }
 
 /**
