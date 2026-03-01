@@ -1,0 +1,42 @@
+# Author: PB and Claude
+# Date: 2026-02-28
+# License: (c) HRDAG, 2025, GPL-2 or newer
+#
+# claude-mem/scripts/claude-mem-http.service
+#
+# Systemd unit for the claude-mem Streamable HTTP MCP server.
+# Runs on the machine hosting PostgreSQL; all Tailnet clients connect to it.
+#
+# Install:
+#   sudo cp scripts/claude-mem-http.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now claude-mem-http
+#
+# Secrets file at /home/pball/.config/claude-mem/env (mode 600, not in git):
+#   CLAUDE_MEM_SECRET=<generated secret>
+#   MCPMEM_PG_PASSWORD=<postgres password>
+#
+# Check status:
+#   sudo systemctl status claude-mem-http
+#   journalctl -u claude-mem-http -f
+
+[Unit]
+Description=Claude Memory MCP Server (Streamable HTTP)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=pball
+WorkingDirectory=/home/pball/projects/claude-mem
+EnvironmentFile=/home/pball/.config/claude-mem/env
+ExecStart=/home/pball/.nvm/versions/node/v24.1.0/bin/node dist/index-http.js
+Restart=on-failure
+RestartSec=5
+
+# Limit runaway restarts
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target
