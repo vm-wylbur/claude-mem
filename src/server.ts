@@ -112,6 +112,60 @@ async function generateSmartTags(content: string, type: MemoryType): Promise<str
     return [...new Set(validTags)].slice(0, 6);
 }
 
+// Lite server: 3 tools with minimal schemas for normal coding sessions.
+// Connects as the default /mcp endpoint. Target: ~2K tokens total.
+export function createLiteServer(dbService: DatabaseService): McpServer {
+    async function storeMemoryWithTags(
+        content: string,
+        type: MemoryType,
+        metadata: Record<string, unknown>,
+        tags?: string[]
+    ): Promise<string> {
+        const memoryId = await storeDevProgress(dbService, content, type, metadata);
+        if (tags && tags.length > 0) {
+            await dbService.addMemoryTags(memoryId, tags);
+        }
+        return memoryId;
+    }
+
+    const server = new McpServer({ name: 'claude-mem-lite', version: '1.0.0' });
+
+    const quickStoreTool = new QuickStoreTool(dbService, storeMemoryWithTags, detectMemoryType, generateSmartTags);
+    const searchTool = new SearchTool(dbService, formatHashForDisplay);
+    const getRecentContextTool = new GetRecentContextTool(dbService);
+
+    server.tool(
+        'mem-store',
+        'Store a memory. Auto-detects type and tags from content.',
+        {
+            content: z.string().describe('What to remember'),
+            tags: z.array(z.string()).optional().describe('Additional tags')
+        },
+        async ({ content, tags }) => quickStoreTool.handle({ content, tags })
+    );
+
+    server.tool(
+        'mem-search',
+        'Semantic search over memories.',
+        {
+            query: z.string().describe('Search query')
+        },
+        async ({ query }) => searchTool.handle({ searchTerm: query })
+    );
+
+    server.tool(
+        'mem-recent',
+        'Recent memories for current project.',
+        {
+            n: z.number().optional().default(10).describe('Number of memories')
+        },
+        async ({ n }) => getRecentContextTool.handle({ limit: n })
+    );
+
+    return server;
+}
+
+// Full server: all tools. Use for curation sessions via /mcp/full.
 export function createServer(dbService: DatabaseService): McpServer {
     async function storeMemoryWithTags(
         content: string,

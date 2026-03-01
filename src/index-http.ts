@@ -36,7 +36,7 @@ import { DatabaseService } from './db/service.js';
 import { createDatabaseAdapterToml } from './config.js';
 import { getConfigSummaryToml } from './config-toml.js';
 import { storeInitialProgress } from './dev-memory.js';
-import { createServer } from './server.js';
+import { createServer, createLiteServer } from './server.js';
 
 config();
 
@@ -74,47 +74,47 @@ app.use((req, res, next) => {
     next();
 });
 
-// Active transports keyed by sessionId
-const transports = new Map<string, StreamableHTTPServerTransport>();
+function makeHandler(serverFactory: () => McpServer) {
+    const transports = new Map<string, StreamableHTTPServerTransport>();
 
-async function mcpHandler(req: express.Request, res: express.Response): Promise<void> {
-    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+    return async function(req: express.Request, res: express.Response): Promise<void> {
+        const sessionId = req.headers['mcp-session-id'] as string | undefined;
 
-    if (req.method === 'POST' && !sessionId) {
-        // New session — must be an initialize request
-        if (!isInitializeRequest(req.body)) {
-            res.status(400).json({ error: 'expected initialize request' });
+        if (req.method === 'POST' && !sessionId) {
+            if (!isInitializeRequest(req.body)) {
+                res.status(400).json({ error: 'expected initialize request' });
+                return;
+            }
+            const transport = new StreamableHTTPServerTransport({
+                sessionIdGenerator: () => randomUUID(),
+                onsessioninitialized: (id) => {
+                    transports.set(id, transport);
+                    console.error(`Session initialized: ${id}`);
+                },
+            });
+            transport.onclose = () => {
+                if (transport.sessionId) {
+                    transports.delete(transport.sessionId);
+                    console.error(`Session closed: ${transport.sessionId}`);
+                }
+            };
+            const server = serverFactory();
+            await server.connect(transport);
+            await transport.handleRequest(req, res, req.body);
             return;
         }
-        const transport = new StreamableHTTPServerTransport({
-            sessionIdGenerator: () => randomUUID(),
-            onsessioninitialized: (id) => {
-                transports.set(id, transport);
-                console.error(`Session initialized: ${id}`);
-            },
-        });
-        transport.onclose = () => {
-            if (transport.sessionId) {
-                transports.delete(transport.sessionId);
-                console.error(`Session closed: ${transport.sessionId}`);
-            }
-        };
-        const server = createServer(dbService);
-        await server.connect(transport);
-        await transport.handleRequest(req, res, req.body);
-        return;
-    }
 
-    // Existing session
-    const transport = sessionId ? transports.get(sessionId) : undefined;
-    if (!transport) {
-        res.status(404).json({ error: `session not found: ${sessionId}` });
-        return;
-    }
-    await transport.handleRequest(req, res, req.body);
+        const transport = sessionId ? transports.get(sessionId) : undefined;
+        if (!transport) {
+            res.status(404).json({ error: `session not found: ${sessionId}` });
+            return;
+        }
+        await transport.handleRequest(req, res, req.body);
+    };
 }
 
-app.all('/mcp', mcpHandler);
+app.all('/mcp', makeHandler(() => createLiteServer(dbService)));
+app.all('/mcp/full', makeHandler(() => createServer(dbService)));
 
 app.listen(PORT, '0.0.0.0', () => {
     console.error(`Memory MCP Server (HTTP) listening on port ${PORT}`);
