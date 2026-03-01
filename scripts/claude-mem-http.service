@@ -24,6 +24,8 @@
 Description=Claude Memory MCP Server (Streamable HTTP)
 After=network.target postgresql.service
 Wants=postgresql.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -33,10 +35,6 @@ EnvironmentFile=/home/pball/.config/claude-mem/env
 ExecStart=/home/pball/.nvm/versions/node/v24.1.0/bin/node dist/index-http.js
 Restart=on-failure
 RestartSec=5
-
-# Limit runaway restarts
-StartLimitIntervalSec=60
-StartLimitBurst=5
 
 [Install]
 WantedBy=multi-user.target
