@@ -30,7 +30,7 @@ import { MultiAIAnalyzeMemoryQualityTool } from './tools/multi-ai-analyze-memory
 import { InteractiveCuratorTool } from './tools/interactive-curator.js';
 import { SyncDocsTool } from './tools/sync-docs.js';
 
-function detectMemoryType(content: string): MemoryType {
+export function detectMemoryType(content: string): MemoryType {
     const lowerContent = content.toLowerCase();
 
     const codePatterns = [
@@ -73,7 +73,7 @@ function detectMemoryType(content: string): MemoryType {
     return 'conversation';
 }
 
-async function generateSmartTags(content: string, type: MemoryType): Promise<string[]> {
+export async function generateSmartTags(content: string, type: MemoryType): Promise<string[]> {
     const tags: string[] = [];
     const lowerContent = content.toLowerCase();
 

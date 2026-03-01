@@ -35,8 +35,10 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { DatabaseService } from './db/service.js';
 import { createDatabaseAdapterToml } from './config.js';
 import { getConfigSummaryToml } from './config-toml.js';
-import { storeInitialProgress } from './dev-memory.js';
-import { createServer, createLiteServer } from './server.js';
+import { storeInitialProgress, storeDevProgress } from './dev-memory.js';
+import { createServer, createLiteServer, detectMemoryType, generateSmartTags } from './server.js';
+import { QuickStoreTool } from './tools/quick-store.js';
+import { GetRecentContextTool } from './tools/get-recent-context.js';
 
 config();
 
@@ -61,6 +63,22 @@ if (existingMemories.length === 0) {
     console.error(`Found ${existingMemories.length} existing memories`);
 }
 
+async function storeMemoryWithTags(
+    content: string,
+    type: import('./db/service.js').MemoryType,
+    metadata: Record<string, unknown>,
+    tags?: string[]
+): Promise<string> {
+    const memoryId = await storeDevProgress(dbService, content, type, metadata);
+    if (tags && tags.length > 0) {
+        await dbService.addMemoryTags(memoryId, tags);
+    }
+    return memoryId;
+}
+
+const restQuickStore = new QuickStoreTool(dbService, storeMemoryWithTags, detectMemoryType, generateSmartTags);
+const restRecentCtx = new GetRecentContextTool(dbService);
+
 const app = express();
 app.use(express.json());
 
@@ -72,6 +90,28 @@ app.use((req, res, next) => {
         return;
     }
     next();
+});
+
+// REST endpoints for hook scripts (simpler than full MCP protocol).
+app.post('/store', async (req: express.Request, res: express.Response): Promise<void> => {
+    const { content, tags } = req.body as { content?: unknown; tags?: unknown };
+    if (!content || typeof content !== 'string') {
+        res.status(400).json({ error: 'content (string) required' });
+        return;
+    }
+    const result = await restQuickStore.handle({
+        content,
+        tags: Array.isArray(tags) ? tags : undefined
+    });
+    const storeBlock = result.content[0] as { type: 'text'; text: string };
+    res.json(JSON.parse(storeBlock.text));
+});
+
+app.get('/recent', async (req: express.Request, res: express.Response): Promise<void> => {
+    const n = Math.min(parseInt(req.query['n'] as string) || 10, 50);
+    const result = await restRecentCtx.handle({ limit: n, format: 'context' });
+    const recentBlock = result.content[0] as { type: 'text'; text: string };
+    res.json(JSON.parse(recentBlock.text));
 });
 
 function makeHandler(serverFactory: () => McpServer) {
