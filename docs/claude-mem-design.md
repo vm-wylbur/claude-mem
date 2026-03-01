@@ -1,8 +1,7 @@
+# Design: Hooks integration, remote MCP over Streamable HTTP, and progressive tool disclosure
 
-# Design: Hooks integration, remote MCP over SSE, and progressive tool disclosure
-
-**Status:** Proposal
-**Context:** Multi-machine deployment across a self-hosted Tailscale network, central PostgreSQL/pgvector backend, Claude Code as primary client.
+**Status:** Proposal  
+**Context:** Multi-machine deployment across a self-hosted Tailscale network, central PostgreSQL/pgvector backend, Claude Code as primary client.  
 **Problem statement:** Three compounding issues currently limit production usefulness: (1) memory capture requires manual action and is routinely skipped; (2) each machine runs its own local MCP instance with no shared state except the DB connection; (3) tool schema verbosity consumes 60K+ tokens at session start, burning ~30% of usable context before any work begins.
 
 ---
@@ -86,11 +85,11 @@ The script queries the MCP server for recent context in the current project (usi
 Steal this pattern from KaimingWan/oh-my-claude (not the whole plugin, just this mechanism). Add to CLAUDE.md or the memory skill:
 
 ```
-When you learn something worth preserving — a gotcha, a working pattern,
+When you learn something worth preserving — a gotcha, a working pattern, 
 an architectural decision — output it as:
 <remember>concise statement of what was learned</remember>
 
-These are captured automatically. Do not call store-dev-memory manually
+These are captured automatically. Do not call store-dev-memory manually 
 unless the memory requires rich metadata.
 ```
 
@@ -125,88 +124,152 @@ Deploy via the existing dotfiles/config sync mechanism. The hook scripts themsel
 
 ---
 
-## Problem 2: Remote MCP over SSE for multi-machine access
+## Problem 2: Remote MCP over Streamable HTTP for multi-machine access
 
 ### Current state
 
-Each machine runs `node dist/index.js` locally over stdio, all connecting to the same central PostgreSQL. This works but means each machine independently manages its MCP server process, and hooks on one machine can't call memory tools on another without a network endpoint.
+Each machine runs `node dist/index.js` locally over stdio, all connecting to the same central PostgreSQL. This works but means each machine independently manages its MCP server process, and hooks on one machine can't call memory tools from a hook script without a network endpoint.
 
-### Proposed solution: SSE transport on the central server
+### Proposed solution: Streamable HTTP transport on the central server
 
-Add SSE transport support to the existing server. The MCP TypeScript SDK supports this natively — it's a transport-layer change, not an architectural one.
+SSE transport (`SSEServerTransport`) is deprecated in the MCP TypeScript SDK as of v1.10.0 (April 2025) and should not be used for new implementations. The replacement is `StreamableHTTPServerTransport`, which uses a single `/mcp` endpoint for all communication — POST for client requests, GET for server-initiated SSE streams, DELETE for session termination. Claude Code uses `"type": "http"` in client config to connect to it.
 
-**Server-side change** (`src/index.ts`):
-
-```typescript
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
-import express from 'express';
-
-const app = express();
-const transports = new Map<string, SSEServerTransport>();
-
-app.get('/sse', async (req, res) => {
-  const transport = new SSEServerTransport('/message', res);
-  transports.set(transport.sessionId, transport);
-
-  const server = createMemoryServer(); // existing server factory
-  await server.connect(transport);
-
-  res.on('close', () => {
-    transports.delete(transport.sessionId);
-  });
-});
-
-app.post('/message', async (req, res) => {
-  const sessionId = req.query.sessionId as string;
-  const transport = transports.get(sessionId);
-  if (transport) {
-    await transport.handlePostMessage(req, res);
-  }
-});
-
-app.listen(3456, '0.0.0.0'); // bind to Tailscale interface if preferred
-```
-
-Run this on the machine that hosts PostgreSQL (or any always-on machine on the Tailnet). One process, all machines connect to it.
-
-**Client-side config** (on each machine, user scope):
+**Dependencies to add:**
 
 ```bash
-claude mcp add --transport sse --scope user claude-mem-remote \
-  http://db-host.tailnet:3456/sse
+npm install @modelcontextprotocol/express express
+# or use the bare Node.js middleware:
+# npm install @modelcontextprotocol/node
 ```
 
-Or in `~/.claude.json`:
+The SDK publishes optional thin middleware packages for Express, Hono, and plain Node.js HTTP. Use `@modelcontextprotocol/express` — it's the lowest-friction path given express is already a common dependency.
 
-```json
-{
-  "mcpServers": {
-    "claude-mem": {
-      "type": "sse",
-      "url": "http://db-host.tailnet:3456/sse"
-    }
-  }
-}
-```
-
-Keep the stdio server available for local dev/testing. The SSE server is for production multi-machine use.
-
-**Auth:** Tailscale handles network-layer auth — no additional auth needed if you trust your Tailnet. Optionally add a shared secret header if you want defense in depth:
+**Server-side change** (`src/index-http.ts` — new file, keep `index.ts` for stdio):
 
 ```typescript
+import express from 'express';
+import { randomUUID } from 'node:crypto';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
+
+// Shared DB service — same pool used by stdio server
+import { createDbService } from './db/service.js';
+import { registerLiteTools, registerFullTools } from './tools/index.js';
+
+const db = await createDbService();
+const app = express();
+app.use(express.json());
+
+// Auth middleware — Tailscale is the network layer; this is belt-and-suspenders
 app.use((req, res, next) => {
-  const secret = req.headers['x-claude-mem-secret'];
-  if (secret !== process.env.CLAUDE_MEM_SECRET) {
+  const secret = process.env.CLAUDE_MEM_SECRET;
+  if (secret && req.headers['x-claude-mem-secret'] !== secret) {
     res.status(401).json({ error: 'unauthorized' });
     return;
   }
   next();
 });
+
+// Session store — maps session IDs to transports
+const transports = new Map<string, StreamableHTTPServerTransport>();
+
+function makeHandler(serverFactory: () => McpServer) {
+  return async (req: express.Request, res: express.Response) => {
+    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+    if (req.method === 'POST' && !sessionId) {
+      // New session — must be an initialize request
+      if (!isInitializeRequest(req.body)) {
+        res.status(400).json({ error: 'expected initialize request' });
+        return;
+      }
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (id) => transports.set(id, transport),
+      });
+      transport.onclose = () => transports.delete(transport.sessionId!);
+      const server = serverFactory();
+      await server.connect(transport);
+      await transport.handleRequest(req, res, req.body);
+      return;
+    }
+
+    // Existing session
+    const transport = sessionId ? transports.get(sessionId) : undefined;
+    if (!transport) {
+      res.status(404).json({ error: 'session not found' });
+      return;
+    }
+    await transport.handleRequest(req, res, req.body);
+  };
+}
+
+// Lite endpoint — tier-1 tools only (normal coding sessions)
+const liteHandler = makeHandler(() => {
+  const server = new McpServer({ name: 'claude-mem-lite', version: '1.0.0' });
+  registerLiteTools(server, db);
+  return server;
+});
+app.all('/mcp', liteHandler);         // default endpoint
+app.all('/mcp/lite', liteHandler);    // explicit alias
+
+// Full endpoint — all tools (curation sessions)
+app.all('/mcp/full', makeHandler(() => {
+  const server = new McpServer({ name: 'claude-mem-full', version: '1.0.0' });
+  registerFullTools(server, db);
+  return server;
+}));
+
+const PORT = process.env.CLAUDE_MEM_PORT ?? 3456;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`claude-mem HTTP server listening on :${PORT}`);
+});
 ```
 
-**Deployment:** Run under systemd on the DB host. The existing `npm run build` workflow applies; just add a new npm script `start:sse` that launches the SSE variant.
+Run this on the machine that hosts PostgreSQL (or any always-on Tailnet node). One process serves all client machines.
 
-**Why not Supergateway?** Supergateway wraps the stdio server in a separate process with an HTTP shim. This adds a process boundary, makes debugging harder, and means you're maintaining two things. Native SSE in the SDK is the right path — same codebase, same tools, just a different transport.
+**Client-side config** — `"type": "http"`, not `"type": "sse"`:
+
+```bash
+# Add to user scope (all projects, all sessions)
+claude mcp add --transport http --scope user claude-mem \
+  http://db-host.tailnet:3456/mcp \
+  --header "X-Claude-Mem-Secret: ${CLAUDE_MEM_SECRET}"
+```
+
+Or directly in `~/.claude.json`:
+
+```json
+{
+  "mcpServers": {
+    "claude-mem": {
+      "type": "http",
+      "url": "http://db-host.tailnet:3456/mcp",
+      "headers": {
+        "X-Claude-Mem-Secret": "${CLAUDE_MEM_SECRET}"
+      }
+    }
+  }
+}
+```
+
+`${CLAUDE_MEM_SECRET}` expands from the environment at connection time — the secret never appears in plaintext in config files. Set it in `~/.bashrc` or via your dotfiles sync.
+
+**Known issue:** Claude Code v1.0.108 had a bug where configured headers were ignored and OAuth discovery was attempted instead (GitHub issue #7290). Verify your Claude Code version handles headers correctly before depending on them. Tailscale network-layer auth alone is sufficient if header auth proves unreliable — the `secret` check in the middleware is optional.
+
+**Deployment:** Add `start:http` to `package.json` scripts:
+
+```json
+"scripts": {
+  "start:stdio": "node dist/index.js",
+  "start:http": "node dist/index-http.js"
+}
+```
+
+Run under systemd on the DB host. Keep the stdio server available unchanged for local dev.
+
+**Why not Supergateway?** It wraps stdio in a separate process with an HTTP shim, adding a process boundary and making debugging harder. Native `StreamableHTTPServerTransport` is the correct path — same codebase, forward-compatible transport.
 
 ---
 
@@ -244,21 +307,15 @@ Connect tier-2 when doing explicit curation work, not during normal coding sessi
 
 ```bash
 # Normal coding session — tier 1 only (from ~/.claude.json permanent config)
-claude-mem: http://db-host.tailnet:3456/sse/lite
+# "url": "http://db-host.tailnet:3456/mcp"  ← hits the lite handler by default
 
-# Curation session — add tier 2 for this session
-claude mcp add --scope local claude-mem-full http://db-host.tailnet:3456/sse/full
+# Curation session — add tier 2 for this session only
+claude mcp add --transport http --scope local claude-mem-full \
+  http://db-host.tailnet:3456/mcp/full \
+  --header "X-Claude-Mem-Secret: ${CLAUDE_MEM_SECRET}"
 ```
 
-**Implementation:** The SSE server from Problem 2 routes `/sse/lite` and `/sse/full` to different server instances sharing the same DB connection pool:
-
-```typescript
-app.get('/sse/lite', (req, res) => connectServer(createLiteServer(), req, res));
-app.get('/sse/full', (req, res) => connectServer(createFullServer(), req, res));
-app.get('/sse',      (req, res) => connectServer(createFullServer(), req, res)); // backward compat
-```
-
-`createLiteServer()` registers only the three tier-1 tools. `createFullServer()` registers everything. Same DB service underneath.
+**Implementation:** The Streamable HTTP server from Problem 2 routes `/mcp` (default/lite) and `/mcp/full` to different server instances sharing the same DB connection pool — see the `makeHandler` pattern in Problem 2. `/mcp` and `/mcp/lite` both hit `registerLiteTools`; `/mcp/full` hits `registerFullTools`.
 
 **Schema verbosity reduction:** Regardless of tiering, audit all tool `description` fields and `inputSchema` descriptions. The MCP spec doesn't require prose documentation in schemas — it requires correctness. Strip anything that reads like a README. Target: under 500 tokens per tool description including schema.
 
@@ -278,7 +335,7 @@ app.get('/sse',      (req, res) => connectServer(createFullServer(), req, res));
 
 These three problems are coupled but decomposable. Recommended order:
 
-**Phase 1: SSE transport** — enables everything else. Without a network endpoint, hooks can't call memory tools from the client machines. Two days of work: add express + SSE transport, test across two machines, deploy under systemd.
+**Phase 1: Streamable HTTP transport** — enables everything else. Without a network endpoint, hooks can't call memory tools from client machines. Two days of work: add `@modelcontextprotocol/express` + `StreamableHTTPServerTransport`, test across two machines, deploy under systemd.
 
 **Phase 2: Progressive disclosure** — split into lite/full servers, audit schema verbosity, measure token reduction. Can be done in parallel with Phase 1 once the SSE routing is working. One day of work.
 
@@ -295,8 +352,10 @@ Total estimated effort: one focused week, parallelizable across phases 1 and 2.
 ```
 claude-mem/
 ├── src/
-│   ├── index.ts          # add SSE transport + lite/full routing
+│   ├── index.ts          # unchanged: stdio transport
+│   ├── index-http.ts     # new: StreamableHTTP server (lite + full endpoints)
 │   └── tools/
+│       ├── index.ts      # refactor: export registerLiteTools, registerFullTools
 │       └── lite.ts       # new: tier-1 tool definitions (thin wrappers)
 ├── hooks/                # new directory
 │   ├── mem-capture.sh    # Stop hook: extract <remember> tags or summarize turn
@@ -304,7 +363,7 @@ claude-mem/
 │   ├── mem-inject.sh     # SessionStart hook: inject recent context briefing
 │   └── mem-degradation.sh# PostToolUseFailure hook: log degradation signals
 ├── scripts/
-│   └── start-sse.sh      # new: launch SSE server with env config
+│   └── claude-mem-http.service  # new: systemd unit for HTTP server
 └── docs/
     └── multi-machine.md  # new: deployment guide for Tailscale + remote MCP
 ```
