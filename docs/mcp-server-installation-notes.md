@@ -160,7 +160,7 @@ which postgres-mcp
 ```bash
 # Add with database connection string
 claude mcp add --scope user --transport stdio postgres-mcp \
-  --env DATABASE_URI="postgres://avnadmin:YOUR_PASSWORD@pg-2c908149-claude-mem.e.aivencloud.com:24030/defaultdb?sslmode=require" \
+  --env DATABASE_URI="postgres://pball@snowball.hrdag.net:5432/claude_mem" \
   -- /home/pball/.local/bin/postgres-mcp
 ```
 

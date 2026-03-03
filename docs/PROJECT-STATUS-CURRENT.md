@@ -92,9 +92,8 @@ src/
 ## 🚀 Deployment Status
 
 ### Production Configuration
-- **Database**: Aiven managed PostgreSQL
-- **Host**: pg-2c908149-claude-mem.e.aivencloud.com:24030
-- **SSL**: Required (managed instance)
+- **Database**: Self-hosted PostgreSQL on snowball
+- **Host**: snowball.hrdag.net:5432
 - **Config**: ~/.config/claude-mem/claude-mem.toml
 
 ### Available Tools

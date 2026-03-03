@@ -19,11 +19,11 @@ const { Pool } = pg;
  * PostgreSQL Database Adapter Implementation with pgvector support
  * 
  * Provides PostgreSQL backend for the memory management system with native vector
- * similarity search using pgvector extension. Connects directly to managed PostgreSQL.
- * 
+ * similarity search using pgvector extension. Connects directly to PostgreSQL.
+ *
  * @features
  * - Native pgvector similarity search (cosine distance)
- * - Direct connection to managed PostgreSQL (Aiven)
+ * - Direct connection to self-hosted PostgreSQL
  * - JSONB metadata storage with rich query capabilities
  * - Connection pooling for performance
  * - Transactional operations for data consistency
@@ -120,7 +120,7 @@ export class PostgresAdapter implements DatabaseAdapter {
     }
   }
 
-  // Removed: establishSshTunnel() method - no longer needed for direct Aiven connection
+  // Removed: establishSshTunnel() method - no longer needed
 
   async disconnect(): Promise<void> {
     await this.cleanup();
@@ -135,7 +135,7 @@ export class PostgresAdapter implements DatabaseAdapter {
     this.isConnected = false;
   }
 
-  // Removed: cleanupSsh() method - no longer needed for direct Aiven connection
+  // Removed: cleanupSsh() method - no longer needed
 
   async healthCheck(): Promise<boolean> {
     if (!this.pool || !this.isConnected) return false;

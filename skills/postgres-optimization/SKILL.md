@@ -342,7 +342,7 @@ Proceed with optimization?
 
 Found: PostgreSQL health baseline (Memory a324c1fa, 63.1% match)
 - Previous buffer cache hit rate: 92%
-- Aiven managed instance with pgvector
+- Self-hosted PostgreSQL with pgvector
 - Good: No vacuum issues, proper SSL configuration
 
 🔧 Running current health analysis...

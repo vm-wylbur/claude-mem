@@ -81,7 +81,7 @@ CREATE INDEX idx_memories_source_doc_id ON memories(source_doc_id);
 ## Implementation Progress
 
 ### ✅ Completed
-1. **Database schema** - Applied to Aiven PostgreSQL
+1. **Database schema** - Applied to PostgreSQL
 2. **Tool skeleton** - `src/tools/sync-docs.ts` created with:
    - Discovery logic (scan ~/docs + $PWD/docs for *.md)
    - Change detection (mtime + content hash)
@@ -286,7 +286,7 @@ CREATE INDEX idx_docs_fts ON lessons_learned_docs USING gin(content_tsv);
 - `src/schema-postgresql.sql` - Added lessons_learned_docs table
 - `src/tools/sync-docs.ts` - New tool (needs TS fixes)
 - `src/index.ts` - Registered sync-docs tool
-- Database - Applied schema to Aiven PostgreSQL
+- Database - Applied schema to PostgreSQL
 
 ---
 

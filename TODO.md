@@ -2,7 +2,7 @@
 
 **Current Status:**
 - Memory system populated with 526 memories (31 from ~/docs lessons-learned)
-- Database migrated to Aiven PostgreSQL (accessible from anywhere)
+- Database on self-hosted PostgreSQL (snowball)
 - Automated daily backups to /data/cold/claude-mem
 - postgres-mcp MCP server installed (user-wide)
 - PostgreSQL optimization skill created and installed
@@ -25,7 +25,7 @@
 
 1. **Test the postgres-optimization skill** in new Claude Code session
    - Verify postgres-mcp tools are accessible
-   - Run database health check on Aiven claude_mem database
+   - Run database health check on claude_mem database
    - Document optimization workflow effectiveness
    - Store first optimization learnings in memory
 

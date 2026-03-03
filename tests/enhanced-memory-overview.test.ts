@@ -53,9 +53,9 @@ class MockDatabaseService {
   async getDatabaseInfo(): Promise<MockDatabaseConnectionInfo> {
     return {
       type: 'postgresql',
-      host: 'pg-2c908149-claude-mem.e.aivencloud.com',
-      port: 24030,
-      database: 'defaultdb',
+      host: 'snowball.hrdag.net',
+      port: 5432,
+      database: 'claude_mem',
       isConnected: true,
       postgresVersion: '15.4',
       pgvectorVersion: '0.5.1',
@@ -103,7 +103,7 @@ async function testEnhancedMemoryOverview(): Promise<void> {
       
       // Assertions
       if (dbInfo.type === 'postgresql' && 
-          dbInfo.host === 'pg-2c908149-claude-mem.e.aivencloud.com' &&
+          dbInfo.host === 'snowball.hrdag.net' &&
           dbInfo.status === '🟢 Connected') {
         console.log('   ✅ Database connection info is correct');
       } else {
