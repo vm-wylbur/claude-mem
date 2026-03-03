@@ -108,7 +108,20 @@ app.post('/store', async (req: express.Request, res: express.Response): Promise<
 });
 
 app.get('/recent', async (req: express.Request, res: express.Response): Promise<void> => {
-    const n = Math.min(parseInt(req.query['n'] as string) || 10, 50);
+    const n = Math.min(parseInt(req.query['n'] as string) || 3, 50);
+    const project = req.query['project'] as string | undefined;
+
+    if (project) {
+        const memories = await dbService.getMemoriesByTag(project, undefined, n);
+        const formatted = await Promise.all(memories.map(async m => ({
+            type: m.content_type,
+            content: m.content,
+            tags: await dbService.getMemoryTags(m.memory_id)
+        })));
+        res.json({ memories: formatted });
+        return;
+    }
+
     const result = await restRecentCtx.handle({ limit: n, format: 'context' });
     const recentBlock = result.content[0] as { type: 'text'; text: string };
     res.json(JSON.parse(recentBlock.text));
