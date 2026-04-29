@@ -8,7 +8,16 @@
 import pg from 'pg';
 import fs from 'fs';
 // Removed: SSH tunnel imports no longer needed
-import { DatabaseAdapter, DatabaseConfig, DatabaseConnectionError, DatabaseConnectionInfo } from './base.js';
+import {
+  DatabaseAdapter,
+  DatabaseConfig,
+  DatabaseConnectionError,
+  DatabaseConnectionInfo,
+  QueueFix,
+  QueueFixConsumedOutcome,
+  QueueFixFilter,
+  QueueFixInput,
+} from './base.js';
 import { MemoryType, MemoryMetadata, Memory } from '../service.js';
 import { generateEmbedding, generateEmbeddingWithFallback } from '../../embeddings.js';
 import { generateMemoryHash, generateTagHash, initializeHasher } from '../../utils/hash.js';
@@ -675,4 +684,186 @@ export class PostgresAdapter implements DatabaseAdapter {
       client.release();
     }
   }
+
+  //
+  // IaC Drift Queue (queue_fixes)
+  //
+
+  async createQueueFix(input: QueueFixInput): Promise<number> {
+    if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
+
+    const client = await this.pool.connect();
+    try {
+      const result = await client.query(
+        `
+          INSERT INTO queue_fixes (
+            target_repo, host, path,
+            before_state, after_state, why,
+            suggested_role, who, trust, metadata
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          RETURNING id
+        `,
+        [
+          input.target_repo,
+          input.host,
+          input.path,
+          input.before_state ?? null,
+          input.after_state,
+          input.why,
+          input.suggested_role ?? null,
+          input.who,
+          input.trust ?? null,
+          input.metadata ?? {},
+        ]
+      );
+      return Number(result.rows[0].id);
+    } finally {
+      client.release();
+    }
+  }
+
+  async listQueueFixes(filter: QueueFixFilter): Promise<QueueFix[]> {
+    if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
+
+    const conds: string[] = [];
+    const params: any[] = [];
+    if (filter.target_repo !== undefined) {
+      params.push(filter.target_repo);
+      conds.push(`target_repo = $${params.length}`);
+    }
+    if (filter.status !== undefined) {
+      params.push(filter.status);
+      conds.push(`status = $${params.length}`);
+    }
+    if (filter.host !== undefined) {
+      params.push(filter.host);
+      conds.push(`host = $${params.length}`);
+    }
+    const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+
+    let limitClause = '';
+    if (filter.limit !== undefined) {
+      params.push(filter.limit);
+      limitClause = `LIMIT $${params.length}`;
+    }
+
+    const client = await this.pool.connect();
+    try {
+      const result = await client.query(
+        `
+          SELECT
+            id, target_repo, host, path,
+            before_state, after_state, why,
+            suggested_role, who, trust, status,
+            created_at, updated_at,
+            consumed_at, consumed_by_commit, consumed_in_repo, consumed_in_path,
+            escalation_reason, superseded_by, metadata
+          FROM queue_fixes
+          ${where}
+          ORDER BY created_at ASC
+          ${limitClause}
+        `,
+        params
+      );
+      return result.rows.map(this.queueFixRow);
+    } finally {
+      client.release();
+    }
+  }
+
+  async markQueueFixConsumed(id: number, outcome: QueueFixConsumedOutcome): Promise<void> {
+    if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
+
+    const client = await this.pool.connect();
+    try {
+      const result = await client.query(
+        `
+          UPDATE queue_fixes
+          SET status = 'consumed',
+              consumed_at = CURRENT_TIMESTAMP,
+              consumed_by_commit = $2,
+              consumed_in_repo = $3,
+              consumed_in_path = $4,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = $1 AND status = 'open'
+        `,
+        [id, outcome.commit, outcome.repo, outcome.path]
+      );
+      if (result.rowCount === 0) {
+        throw new Error(`queue_fix ${id} not found or not open`);
+      }
+    } finally {
+      client.release();
+    }
+  }
+
+  async markQueueFixEscalated(id: number, reason: string): Promise<void> {
+    if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
+
+    const client = await this.pool.connect();
+    try {
+      const result = await client.query(
+        `
+          UPDATE queue_fixes
+          SET status = 'escalated',
+              escalation_reason = $2,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = $1 AND status = 'open'
+        `,
+        [id, reason]
+      );
+      if (result.rowCount === 0) {
+        throw new Error(`queue_fix ${id} not found or not open`);
+      }
+    } finally {
+      client.release();
+    }
+  }
+
+  async markQueueFixSuperseded(id: number, supersededBy: number): Promise<void> {
+    if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
+
+    const client = await this.pool.connect();
+    try {
+      const result = await client.query(
+        `
+          UPDATE queue_fixes
+          SET status = 'superseded',
+              superseded_by = $2,
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = $1 AND status = 'open'
+        `,
+        [id, supersededBy]
+      );
+      if (result.rowCount === 0) {
+        throw new Error(`queue_fix ${id} not found or not open`);
+      }
+    } finally {
+      client.release();
+    }
+  }
+
+  private queueFixRow = (row: any): QueueFix => ({
+    id: Number(row.id),
+    target_repo: row.target_repo,
+    host: row.host,
+    path: row.path,
+    before_state: row.before_state,
+    after_state: row.after_state,
+    why: row.why,
+    suggested_role: row.suggested_role,
+    who: row.who,
+    trust: row.trust,
+    status: row.status,
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+    consumed_at:
+      row.consumed_at instanceof Date ? row.consumed_at.toISOString() : row.consumed_at,
+    consumed_by_commit: row.consumed_by_commit,
+    consumed_in_repo: row.consumed_in_repo,
+    consumed_in_path: row.consumed_in_path,
+    escalation_reason: row.escalation_reason,
+    superseded_by: row.superseded_by !== null ? Number(row.superseded_by) : null,
+    metadata: row.metadata ?? {},
+  });
 }

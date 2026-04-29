@@ -226,10 +226,98 @@ export interface DatabaseAdapter {
    * @param relationshipType - Type of relationship (e.g., 'references', 'builds_on')
    */
   createMemoryRelationship(
-    sourceMemoryId: string, 
-    targetMemoryId: string, 
+    sourceMemoryId: string,
+    targetMemoryId: string,
     relationshipType: string
   ): Promise<void>;
+
+  //
+  // IaC Drift Queue (queue_fixes)
+  //
+
+  /**
+   * Append a queue_fix entry recording a direct fix made on a host that
+   * needs to be encoded into IaC by the target_repo's agent.
+   * @returns numeric id of the new entry
+   */
+  createQueueFix(input: QueueFixInput): Promise<number>;
+
+  /**
+   * List queue_fix entries by target_repo + status. Ordered created_at ASC
+   * (FIFO drain). Returns ALL matches up to limit (no relevance ranking).
+   */
+  listQueueFixes(filter: QueueFixFilter): Promise<QueueFix[]>;
+
+  /**
+   * Mark a queue_fix entry consumed (encoded into IaC).
+   */
+  markQueueFixConsumed(id: number, outcome: QueueFixConsumedOutcome): Promise<void>;
+
+  /**
+   * Mark a queue_fix entry escalated (drainer can't auto-encode; needs human triage).
+   */
+  markQueueFixEscalated(id: number, reason: string): Promise<void>;
+
+  /**
+   * Mark a queue_fix entry superseded by a later entry (e.g., a follow-up
+   * fix replaces it).
+   */
+  markQueueFixSuperseded(id: number, supersededBy: number): Promise<void>;
+}
+
+//
+// Queue-fix types
+//
+
+export type QueueFixStatus = 'open' | 'consumed' | 'escalated' | 'superseded';
+
+export interface QueueFixInput {
+  target_repo: string;
+  host: string;
+  path: string;
+  before_state?: string | null;
+  after_state: string;
+  why: string;
+  suggested_role?: string | null;
+  who: string;
+  trust?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface QueueFixFilter {
+  target_repo?: string;
+  status?: QueueFixStatus;
+  host?: string;
+  limit?: number;
+}
+
+export interface QueueFixConsumedOutcome {
+  commit: string;
+  repo: string;
+  path: string;
+}
+
+export interface QueueFix {
+  id: number;
+  target_repo: string;
+  host: string;
+  path: string;
+  before_state: string | null;
+  after_state: string;
+  why: string;
+  suggested_role: string | null;
+  who: string;
+  trust: string | null;
+  status: QueueFixStatus;
+  created_at: string;
+  updated_at: string;
+  consumed_at: string | null;
+  consumed_by_commit: string | null;
+  consumed_in_repo: string | null;
+  consumed_in_path: string | null;
+  escalation_reason: string | null;
+  superseded_by: number | null;
+  metadata: Record<string, unknown>;
 }
 
 /**

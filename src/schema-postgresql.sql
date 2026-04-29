@@ -82,3 +82,59 @@ CREATE INDEX IF NOT EXISTS idx_docs_created_at ON lessons_learned_docs(created_a
 CREATE INDEX IF NOT EXISTS idx_docs_file_mtime ON lessons_learned_docs(file_mtime);
 CREATE INDEX IF NOT EXISTS idx_docs_doc_hash ON lessons_learned_docs(doc_hash);
 CREATE INDEX IF NOT EXISTS idx_memories_source_doc_id ON memories(source_doc_id);
+
+-- ==============================================================================
+-- IaC Drift Queue: queue_fixes
+-- ==============================================================================
+-- Async write-back queue for direct fixes made on hosts that need to be
+-- encoded into IaC (Ansible roles, repo configs). Writers append entries
+-- when they make a direct change; the target repo's agent drains entries
+-- at session boundaries (not mid-session) to encode them as role/config
+-- changes.
+--
+-- This is intentionally NOT scoped to a project: queue is global, and
+-- entries are routed by target_repo (string).
+
+CREATE TABLE IF NOT EXISTS queue_fixes (
+    id BIGSERIAL PRIMARY KEY,
+
+    -- routing
+    target_repo TEXT NOT NULL,           -- 'hrdag-ansible', 'tfcs', 'hmon', etc.
+
+    -- what changed
+    host TEXT NOT NULL,                  -- 'scott', 'lizo', etc.
+    path TEXT NOT NULL,                  -- file path, or 'systemd:foo.service', etc.
+    before_state TEXT,                   -- nullable when entry describes a creation
+    after_state TEXT NOT NULL,
+    why TEXT NOT NULL,
+
+    -- optional hints for the drainer
+    suggested_role TEXT,
+
+    -- provenance
+    who TEXT NOT NULL,                   -- 'PB', 'cc-tfcs', etc.
+    trust TEXT,                          -- 'PB' = fast-lane; NULL or other = investigate
+
+    -- lifecycle
+    status TEXT NOT NULL DEFAULT 'open'
+        CHECK (status IN ('open', 'consumed', 'escalated', 'superseded')),
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+
+    -- outcome (filled when status changes)
+    consumed_at TIMESTAMPTZ,
+    consumed_by_commit TEXT,             -- git hash where the encode landed
+    consumed_in_repo TEXT,
+    consumed_in_path TEXT,
+    escalation_reason TEXT,
+    superseded_by BIGINT REFERENCES queue_fixes(id),
+
+    -- extension point
+    metadata JSONB DEFAULT '{}'
+);
+
+-- Drain query is `WHERE target_repo=$1 AND status=$2 ORDER BY created_at`
+CREATE INDEX IF NOT EXISTS idx_qf_target_status_created
+    ON queue_fixes(target_repo, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_qf_host ON queue_fixes(host);
+CREATE INDEX IF NOT EXISTS idx_qf_metadata ON queue_fixes USING gin(metadata);

@@ -29,6 +29,9 @@ import { AnalyzeMemoryQualityTool } from './tools/analyze-memory-quality.js';
 import { MultiAIAnalyzeMemoryQualityTool } from './tools/multi-ai-analyze-memory-quality.js';
 import { InteractiveCuratorTool } from './tools/interactive-curator.js';
 import { SyncDocsTool } from './tools/sync-docs.js';
+import { QueueFixStoreTool } from './tools/queue-fix-store.js';
+import { QueueFixListTool } from './tools/queue-fix-list.js';
+import { QueueFixMarkTool } from './tools/queue-fix-mark.js';
 
 export function detectMemoryType(content: string): MemoryType {
     const lowerContent = content.toLowerCase();
@@ -160,6 +163,56 @@ export function createLiteServer(dbService: DatabaseService): McpServer {
             n: z.number().optional().default(10).describe('Number of memories')
         },
         async ({ n }) => getRecentContextTool.handle({ limit: n })
+    );
+
+    // IaC drift queue (queue_fixes table)
+    const queueFixStoreTool = new QueueFixStoreTool(dbService);
+    const queueFixListTool = new QueueFixListTool(dbService);
+    const queueFixMarkTool = new QueueFixMarkTool(dbService);
+
+    server.tool(
+        'queue-fix-store',
+        'Record a direct fix made on a host that needs to be encoded into IaC. Append-only; the target_repo agent drains entries at session boundaries.',
+        {
+            target_repo: z.string().describe('Repo whose agent should encode this (e.g. "hrdag-ansible", "tfcs", "hmon")'),
+            host: z.string().describe('Host where the fix was made (e.g. "scott", "lizo")'),
+            path: z.string().describe('File path or systemd:unit name affected'),
+            before_state: z.string().optional().describe('State before the fix (omit for creations)'),
+            after_state: z.string().describe('State after the fix'),
+            why: z.string().describe('Reason for the fix; this saves the drainer an investigation'),
+            suggested_role: z.string().optional().describe('Optional hint: which Ansible role / config file should encode this'),
+            who: z.string().describe('Identity of the operator (e.g. "PB", "cc-tfcs")'),
+            trust: z.string().optional().describe('Trust stamp (e.g. "PB" for fast-lane). NULL or other values trigger investigation.'),
+            metadata: z.record(z.any()).optional().describe('Free-form extension fields')
+        },
+        async (params) => queueFixStoreTool.handle(params)
+    );
+
+    server.tool(
+        'queue-fix-list',
+        'List queue_fix entries by target_repo + status. Returns all matches in FIFO (created_at ASC) order; not relevance-ranked.',
+        {
+            target_repo: z.string().optional().describe('Filter by target repo'),
+            status: z.enum(['open', 'consumed', 'escalated', 'superseded']).optional().describe('Filter by status (default: open)'),
+            host: z.string().optional().describe('Filter by host'),
+            limit: z.number().optional().describe('Max entries to return (default: 50)')
+        },
+        async (params) => queueFixListTool.handle(params)
+    );
+
+    server.tool(
+        'queue-fix-mark',
+        'Mark a queue_fix entry consumed (encoded into IaC), escalated (cannot auto-encode), or superseded.',
+        {
+            id: z.number().describe('queue_fix entry id'),
+            status: z.enum(['consumed', 'escalated', 'superseded']).describe('New status'),
+            consumed_by_commit: z.string().optional().describe('git hash where the encode landed (required for consumed)'),
+            consumed_in_repo: z.string().optional().describe('Repo that received the encode (required for consumed)'),
+            consumed_in_path: z.string().optional().describe('File path edited in the encode (required for consumed)'),
+            escalation_reason: z.string().optional().describe('Why this needs human triage (required for escalated)'),
+            superseded_by: z.number().optional().describe('id of the later entry that supersedes this one (required for superseded)')
+        },
+        async (params) => queueFixMarkTool.handle(params)
     );
 
     return server;
@@ -380,6 +433,56 @@ export function createServer(dbService: DatabaseService): McpServer {
             forceUpdate: z.boolean().optional().default(false).describe('Re-ingest all files even if unchanged (default: false)')
         },
         async (params) => syncDocsTool.handle(params)
+    );
+
+    // IaC drift queue (queue_fixes table)
+    const queueFixStoreTool = new QueueFixStoreTool(dbService);
+    const queueFixListTool = new QueueFixListTool(dbService);
+    const queueFixMarkTool = new QueueFixMarkTool(dbService);
+
+    server.tool(
+        'queue-fix-store',
+        'Record a direct fix made on a host that needs to be encoded into IaC. Append-only; the target_repo agent drains entries at session boundaries.',
+        {
+            target_repo: z.string(),
+            host: z.string(),
+            path: z.string(),
+            before_state: z.string().optional(),
+            after_state: z.string(),
+            why: z.string(),
+            suggested_role: z.string().optional(),
+            who: z.string(),
+            trust: z.string().optional(),
+            metadata: z.record(z.any()).optional()
+        },
+        async (params) => queueFixStoreTool.handle(params)
+    );
+
+    server.tool(
+        'queue-fix-list',
+        'List queue_fix entries by target_repo + status (FIFO order).',
+        {
+            target_repo: z.string().optional(),
+            status: z.enum(['open', 'consumed', 'escalated', 'superseded']).optional(),
+            host: z.string().optional(),
+            limit: z.number().optional()
+        },
+        async (params) => queueFixListTool.handle(params)
+    );
+
+    server.tool(
+        'queue-fix-mark',
+        'Mark a queue_fix entry consumed/escalated/superseded.',
+        {
+            id: z.number(),
+            status: z.enum(['consumed', 'escalated', 'superseded']),
+            consumed_by_commit: z.string().optional(),
+            consumed_in_repo: z.string().optional(),
+            consumed_in_path: z.string().optional(),
+            escalation_reason: z.string().optional(),
+            superseded_by: z.number().optional()
+        },
+        async (params) => queueFixMarkTool.handle(params)
     );
 
     return server;

@@ -6,7 +6,16 @@
 // mcp-long-term-memory-pg/src/db/service-new.ts
 
 import { z } from 'zod';
-import { DatabaseAdapter, DatabaseConnectionInfo } from './adapters/base.js';
+import {
+  DatabaseAdapter,
+  DatabaseConnectionInfo,
+  QueueFix,
+  QueueFixConsumedOutcome,
+  QueueFixFilter,
+  QueueFixInput,
+} from './adapters/base.js';
+
+export type { QueueFix, QueueFixFilter, QueueFixInput, QueueFixConsumedOutcome } from './adapters/base.js';
 
 // Re-export types from base for backwards compatibility
 export const MemoryType = z.enum(['conversation', 'code', 'decision', 'reference']);
@@ -371,5 +380,34 @@ export class DatabaseService {
         } finally {
             client.release();
         }
+    }
+
+    //
+    // IaC Drift Queue (queue_fixes)
+    //
+
+    /** Append a queue_fix entry. Returns numeric id. */
+    async createQueueFix(input: QueueFixInput): Promise<number> {
+        return this.adapter.createQueueFix(input);
+    }
+
+    /** List queue_fix entries by target_repo + status (FIFO order). */
+    async listQueueFixes(filter: QueueFixFilter): Promise<QueueFix[]> {
+        return this.adapter.listQueueFixes(filter);
+    }
+
+    /** Mark a queue_fix entry consumed (encoded into IaC). */
+    async markQueueFixConsumed(id: number, outcome: QueueFixConsumedOutcome): Promise<void> {
+        return this.adapter.markQueueFixConsumed(id, outcome);
+    }
+
+    /** Mark a queue_fix entry escalated (drainer can't auto-encode). */
+    async markQueueFixEscalated(id: number, reason: string): Promise<void> {
+        return this.adapter.markQueueFixEscalated(id, reason);
+    }
+
+    /** Mark a queue_fix entry superseded by a later entry. */
+    async markQueueFixSuperseded(id: number, supersededBy: number): Promise<void> {
+        return this.adapter.markQueueFixSuperseded(id, supersededBy);
     }
 }
