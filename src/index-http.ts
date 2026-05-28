@@ -32,7 +32,7 @@ import express from 'express';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
-import { DatabaseService } from './db/service.js';
+import { DatabaseService, QueueFixInput, QueueFixFilter, QueueFixConsumedOutcome } from './db/service.js';
 import { createDatabaseAdapterToml } from './config.js';
 import { getConfigSummaryToml } from './config-toml.js';
 import { storeInitialProgress, storeDevProgress } from './dev-memory.js';
@@ -125,6 +125,104 @@ app.get('/recent', async (req: express.Request, res: express.Response): Promise<
     const result = await restRecentCtx.handle({ limit: n, format: 'context' });
     const recentBlock = result.content[0] as { type: 'text'; text: string };
     res.json(JSON.parse(recentBlock.text));
+});
+
+// Plain-REST equivalents of four MCP tools (mem-search + queue-fix-*).
+// Lets clients invoke without speaking MCP — see issue #2.
+
+app.post('/search', async (req: express.Request, res: express.Response): Promise<void> => {
+    const { query, limit } = req.body as { query?: unknown; limit?: unknown };
+    if (!query || typeof query !== 'string') {
+        res.status(400).json({ error: 'query (string) required' });
+        return;
+    }
+    const n = typeof limit === 'number' && limit > 0 ? Math.min(limit, 50) : 5;
+    const memories = await dbService.findSimilarMemories(query, n);
+    res.json({ memories });
+});
+
+app.post('/qfix-store', async (req: express.Request, res: express.Response): Promise<void> => {
+    const b = req.body as Partial<QueueFixInput>;
+    if (!b.target_repo || !b.host || !b.path || !b.after_state || !b.why || !b.who) {
+        res.status(400).json({
+            error: 'target_repo, host, path, after_state, why, who are all required'
+        });
+        return;
+    }
+    const input: QueueFixInput = {
+        target_repo: b.target_repo,
+        host: b.host,
+        path: b.path,
+        before_state: b.before_state ?? null,
+        after_state: b.after_state,
+        why: b.why,
+        suggested_role: b.suggested_role,
+        who: b.who,
+        trust: b.trust,
+        metadata: b.metadata,
+    };
+    const id = await dbService.createQueueFix(input);
+    res.json({ id });
+});
+
+app.get('/qfix-list', async (req: express.Request, res: express.Response): Promise<void> => {
+    const q = req.query;
+    const allowed: Array<QueueFixFilter['status']> = ['open', 'consumed', 'escalated', 'superseded'];
+    const statusParam = q['status'] as string | undefined;
+    if (statusParam !== undefined && !allowed.includes(statusParam as QueueFixFilter['status'])) {
+        res.status(400).json({ error: `status must be one of ${allowed.join('|')}` });
+        return;
+    }
+    const limitNum = q['limit'] ? parseInt(q['limit'] as string, 10) : undefined;
+    const filter: QueueFixFilter = {
+        target_repo: q['target_repo'] as string | undefined,
+        status: statusParam as QueueFixFilter['status'] | undefined,
+        host: q['host'] as string | undefined,
+        limit: Number.isFinite(limitNum) ? limitNum : undefined,
+    };
+    const entries = await dbService.listQueueFixes(filter);
+    res.json(entries);
+});
+
+app.post('/qfix-mark', async (req: express.Request, res: express.Response): Promise<void> => {
+    const b = req.body as {
+        id?: unknown; status?: unknown;
+        consumed_by_commit?: unknown; consumed_in_repo?: unknown; consumed_in_path?: unknown;
+        escalation_reason?: unknown; superseded_by?: unknown;
+    };
+    if (typeof b.id !== 'number') {
+        res.status(400).json({ error: 'id (number) required' });
+        return;
+    }
+    if (b.status === 'consumed') {
+        const commit = b.consumed_by_commit, repo = b.consumed_in_repo, path = b.consumed_in_path;
+        if (typeof commit !== 'string' || typeof repo !== 'string' || typeof path !== 'string') {
+            res.status(400).json({
+                error: 'consumed requires consumed_by_commit, consumed_in_repo, consumed_in_path (all strings)'
+            });
+            return;
+        }
+        const outcome: QueueFixConsumedOutcome = { commit, repo, path };
+        await dbService.markQueueFixConsumed(b.id, outcome);
+    } else if (b.status === 'escalated') {
+        if (typeof b.escalation_reason !== 'string') {
+            res.status(400).json({ error: 'escalated requires escalation_reason (string)' });
+            return;
+        }
+        await dbService.markQueueFixEscalated(b.id, b.escalation_reason);
+    } else if (b.status === 'superseded') {
+        if (typeof b.superseded_by !== 'number') {
+            res.status(400).json({ error: 'superseded requires superseded_by (number)' });
+            return;
+        }
+        await dbService.markQueueFixSuperseded(b.id, b.superseded_by);
+    } else {
+        res.status(400).json({
+            error: 'status must be consumed | escalated | superseded'
+        });
+        return;
+    }
+    res.json({ success: true });
 });
 
 function makeHandler(serverFactory: () => McpServer) {
