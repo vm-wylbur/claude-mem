@@ -30,3 +30,5 @@ logs/
 
 # Test coverage
 coverage/ 
+# oh-my-claudecode session state (omc deprecated)
+.omc/
