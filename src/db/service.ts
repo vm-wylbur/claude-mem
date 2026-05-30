@@ -101,13 +101,14 @@ export class DatabaseService {
     async storeDevMemory(
         content: string,
         type: MemoryType,
-        metadata: MemoryMetadata
+        metadata: MemoryMetadata,
+        sourceKey?: string
     ): Promise<string> {
         if (!this.devProjectId) {
             throw new Error('DatabaseService not initialized. Call initialize() first.');
         }
 
-        return this.adapter.storeMemory(content, type, metadata, this.devProjectId);
+        return this.adapter.storeMemory(content, type, metadata, this.devProjectId, sourceKey);
     }
 
     /**
@@ -117,9 +118,10 @@ export class DatabaseService {
         content: string,
         type: MemoryType,
         metadata: MemoryMetadata,
-        projectId: string
+        projectId: string,
+        sourceKey?: string
     ): Promise<string> {
-        return this.adapter.storeMemory(content, type, metadata, projectId);
+        return this.adapter.storeMemory(content, type, metadata, projectId, sourceKey);
     }
 
     /**

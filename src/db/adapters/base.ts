@@ -104,13 +104,17 @@ export interface DatabaseAdapter {
    * @param type - Type of memory (conversation, code, decision, reference)
    * @param metadata - Structured metadata for the memory
    * @param projectId - Project this memory belongs to (hex string)
+   * @param sourceKey - Optional stable upsert key. When provided, re-storing
+   *   the same key updates the existing row in place (content, embedding,
+   *   metadata) instead of inserting a duplicate. Omit for content-hash dedup.
    * @returns Promise resolving to the new memory hash ID (as string)
    */
   storeMemory(
-    content: string, 
-    type: MemoryType, 
-    metadata: MemoryMetadata, 
-    projectId: string
+    content: string,
+    type: MemoryType,
+    metadata: MemoryMetadata,
+    projectId: string,
+    sourceKey?: string
   ): Promise<string>;
 
   /**

@@ -19,7 +19,7 @@ export interface StoreDevMemoryParams {
 export class StoreDevMemoryTool extends BaseMCPTool<StoreDevMemoryParams> {
   constructor(
     dbService: any,
-    private storeMemoryWithTagsFunction: (content: string, type: MemoryType, metadata: any, tags?: string[]) => Promise<string>
+    private storeMemoryWithTagsFunction: (content: string, type: MemoryType, metadata: any, tags?: string[], sourceKey?: string) => Promise<string>
   ) {
     super(dbService);
   }

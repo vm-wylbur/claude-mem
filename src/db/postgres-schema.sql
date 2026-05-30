@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS memories (
     content_type VARCHAR(50) NOT NULL CHECK (content_type IN ('conversation', 'code', 'decision', 'reference')),
     metadata JSONB NOT NULL DEFAULT '{}',
     embedding vector(768), -- 768 dimensions for nomic-embed-text
+    source_key TEXT, -- stable upsert key for file-mirrored memories (Track 2b); NULL = content-hash dedup
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -35,6 +36,16 @@ CREATE INDEX IF NOT EXISTS idx_memories_metadata ON memories USING GIN(metadata)
 
 -- pgvector similarity search index (HNSW for fast approximate search)
 CREATE INDEX IF NOT EXISTS idx_memories_embedding ON memories USING hnsw (embedding vector_cosine_ops);
+
+-- source_key: stable upsert key for file-mirrored memories (Track 2b).
+-- The ALTER makes this idempotent for databases initialized before the
+-- column existed (CREATE TABLE IF NOT EXISTS above is a no-op on them).
+-- Partial unique index = unique among non-null keys, unlimited NULLs, so
+-- re-storing an edited memory file updates in place while unkeyed memories
+-- are unaffected. Pairs with ON CONFLICT (source_key) WHERE source_key IS NOT NULL.
+ALTER TABLE memories ADD COLUMN IF NOT EXISTS source_key TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_memories_source_key
+    ON memories(source_key) WHERE source_key IS NOT NULL;
 
 -- Tag system
 CREATE TABLE IF NOT EXISTS tags (

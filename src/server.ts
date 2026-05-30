@@ -122,9 +122,10 @@ export function createLiteServer(dbService: DatabaseService): McpServer {
         content: string,
         type: MemoryType,
         metadata: Record<string, unknown>,
-        tags?: string[]
+        tags?: string[],
+        sourceKey?: string
     ): Promise<string> {
-        const memoryId = await storeDevProgress(dbService, content, type, metadata);
+        const memoryId = await storeDevProgress(dbService, content, type, metadata, sourceKey);
         if (tags && tags.length > 0) {
             await dbService.addMemoryTags(memoryId, tags);
         }
@@ -224,9 +225,10 @@ export function createServer(dbService: DatabaseService): McpServer {
         content: string,
         type: MemoryType,
         metadata: Record<string, unknown>,
-        tags?: string[]
+        tags?: string[],
+        sourceKey?: string
     ): Promise<string> {
-        const memoryId = await storeDevProgress(dbService, content, type, metadata);
+        const memoryId = await storeDevProgress(dbService, content, type, metadata, sourceKey);
         if (tags && tags.length > 0) {
             await dbService.addMemoryTags(memoryId, tags);
         }

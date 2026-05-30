@@ -67,9 +67,10 @@ async function storeMemoryWithTags(
     content: string,
     type: import('./db/service.js').MemoryType,
     metadata: Record<string, unknown>,
-    tags?: string[]
+    tags?: string[],
+    sourceKey?: string
 ): Promise<string> {
-    const memoryId = await storeDevProgress(dbService, content, type, metadata);
+    const memoryId = await storeDevProgress(dbService, content, type, metadata, sourceKey);
     if (tags && tags.length > 0) {
         await dbService.addMemoryTags(memoryId, tags);
     }
@@ -94,14 +95,15 @@ app.use((req, res, next) => {
 
 // REST endpoints for hook scripts (simpler than full MCP protocol).
 app.post('/store', async (req: express.Request, res: express.Response): Promise<void> => {
-    const { content, tags } = req.body as { content?: unknown; tags?: unknown };
+    const { content, tags, source_key } = req.body as { content?: unknown; tags?: unknown; source_key?: unknown };
     if (!content || typeof content !== 'string') {
         res.status(400).json({ error: 'content (string) required' });
         return;
     }
     const result = await restQuickStore.handle({
         content,
-        tags: Array.isArray(tags) ? tags : undefined
+        tags: Array.isArray(tags) ? tags : undefined,
+        source_key: typeof source_key === 'string' && source_key.length > 0 ? source_key : undefined
     });
     const storeBlock = result.content[0] as { type: 'text'; text: string };
     res.json(JSON.parse(storeBlock.text));

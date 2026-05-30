@@ -11,12 +11,13 @@ export interface QuickStoreParams {
   type?: 'conversation' | 'code' | 'decision' | 'reference';
   status?: string;
   tags?: string[];
+  source_key?: string;
 }
 
 export class QuickStoreTool extends BaseMCPTool<QuickStoreParams> {
   constructor(
     dbService: any,
-    private storeMemoryWithTagsFunction: (content: string, type: MemoryType, metadata: any, tags?: string[]) => Promise<string>,
+    private storeMemoryWithTagsFunction: (content: string, type: MemoryType, metadata: any, tags?: string[], sourceKey?: string) => Promise<string>,
     private detectMemoryTypeFunction: (content: string) => MemoryType,
     private generateSmartTagsFunction: (content: string, type: MemoryType) => Promise<string[]>
   ) {
@@ -25,7 +26,7 @@ export class QuickStoreTool extends BaseMCPTool<QuickStoreParams> {
 
   async handle(params: QuickStoreParams): Promise<MCPResponse> {
     try {
-      const { content, type, status, tags = [] } = params;
+      const { content, type, status, tags = [], source_key } = params;
       
       // Auto-detect memory type if not provided
       const detectedType = type || this.detectMemoryTypeFunction(content);
@@ -48,7 +49,7 @@ export class QuickStoreTool extends BaseMCPTool<QuickStoreParams> {
         implementation_status: status,
         key_decisions: keyDecisions,
         date: new Date().toISOString()
-      }, allTags);
+      }, allTags, source_key);
 
       return {
         content: [{
