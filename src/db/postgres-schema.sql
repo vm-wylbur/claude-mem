@@ -86,8 +86,12 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
--- Trigger to automatically update updated_at
-CREATE TRIGGER update_memories_updated_at 
+-- Trigger to automatically update updated_at.
+-- Guarded with DROP IF EXISTS so re-running this file on an existing DB is
+-- idempotent: a bare CREATE TRIGGER errors if it already exists, which would
+-- abort the rest of the script (including the harvest tables added below).
+DROP TRIGGER IF EXISTS update_memories_updated_at ON memories;
+CREATE TRIGGER update_memories_updated_at
     BEFORE UPDATE ON memories 
     FOR EACH ROW 
     EXECUTE FUNCTION update_updated_at_column();
@@ -153,3 +157,82 @@ CREATE INDEX IF NOT EXISTS idx_qf_target_status_created
     ON queue_fixes(target_repo, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_qf_host ON queue_fixes(host);
 CREATE INDEX IF NOT EXISTS idx_qf_metadata ON queue_fixes USING GIN(metadata);
+
+-- ==============================================================================
+-- Document harvest tier: lessons_learned_docs, extraction_decisions, git_commits
+-- ==============================================================================
+-- Captured 2026-05-31 from the live claude_mem DB, where these tables exist and
+-- carry data (304 / 115 / 182 rows) but had drifted OUT of this committed schema
+-- -- a re-init would not have recreated them. See docs/harvester-plan-20260531.md.
+--
+-- NOTE: broader drift remains beyond this fix -- the live memories.memory_id is
+-- TEXT (xxHash hex, per migrate-to-hash-ids) while this file still declares it
+-- SERIAL. The tables below match the live types (TEXT memory references).
+
+-- Tier 1: raw markdown docs (the harvest corpus of record). doc_hash (blake3 of
+-- content) is the content-level change/dedup key; filepath is per-path provenance.
+CREATE TABLE IF NOT EXISTS lessons_learned_docs (
+    doc_id TEXT PRIMARY KEY,                  -- blake3 of filepath
+    filename TEXT NOT NULL,
+    filepath TEXT NOT NULL UNIQUE,
+    content TEXT NOT NULL,                    -- full markdown
+    file_mtime TIMESTAMPTZ NOT NULL,
+    doc_hash TEXT NOT NULL,                   -- blake3 of content
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    metadata JSONB DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_docs_filepath   ON lessons_learned_docs(filepath);
+CREATE INDEX IF NOT EXISTS idx_docs_created_at ON lessons_learned_docs(created_at);
+CREATE INDEX IF NOT EXISTS idx_docs_file_mtime ON lessons_learned_docs(file_mtime);
+CREATE INDEX IF NOT EXISTS idx_docs_doc_hash   ON lessons_learned_docs(doc_hash);
+
+-- Provenance: link a distilled memory back to its source doc.
+ALTER TABLE memories ADD COLUMN IF NOT EXISTS source_doc_id TEXT
+    REFERENCES lessons_learned_docs(doc_id);
+CREATE INDEX IF NOT EXISTS idx_memories_source_doc_id ON memories(source_doc_id);
+
+-- The labeled set: one row per proposed insight, recording the human decision
+-- (approved / edited / skipped + reason). Seeds and grades the distiller.
+CREATE TABLE IF NOT EXISTS extraction_decisions (
+    decision_id BIGSERIAL PRIMARY KEY,
+    doc_id TEXT REFERENCES lessons_learned_docs(doc_id),
+    doc_filename TEXT NOT NULL,
+    insight_number INTEGER NOT NULL,
+    insight_title TEXT,
+    insight_content TEXT NOT NULL,
+    insight_tags TEXT[],
+    action TEXT NOT NULL CHECK (action IN ('approved', 'edited', 'skipped')),
+    edited_content TEXT,                      -- human-corrected text, when edited
+    skip_reason TEXT,                         -- why rejected, when skipped
+    stored_memory_id TEXT,                    -- memory created, when approved/edited
+    "timestamp" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_extraction_decisions_action    ON extraction_decisions(action);
+CREATE INDEX IF NOT EXISTS idx_extraction_decisions_doc_id    ON extraction_decisions(doc_id);
+CREATE INDEX IF NOT EXISTS idx_extraction_decisions_timestamp ON extraction_decisions("timestamp" DESC);
+
+-- git_commits: git-integration feature, independent of the doc harvester.
+CREATE TABLE IF NOT EXISTS git_commits (
+    id SERIAL PRIMARY KEY,
+    memory_id VARCHAR(255) NOT NULL UNIQUE,
+    content TEXT NOT NULL,
+    content_type VARCHAR(50) DEFAULT 'git_commit',
+    created_at TIMESTAMPTZ NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    tags JSONB DEFAULT '[]',
+    sentiment VARCHAR(20) DEFAULT 'neutral',
+    complexity VARCHAR(20) DEFAULT 'low',
+    embedding vector(768),
+    commit_hash VARCHAR(255) NOT NULL UNIQUE,
+    repository_name VARCHAR(255) NOT NULL,
+    commit_type VARCHAR(50) NOT NULL,
+    author_name VARCHAR(255),
+    files_changed INTEGER DEFAULT 0,
+    lines_added INTEGER DEFAULT 0,
+    lines_deleted INTEGER DEFAULT 0,
+    primary_language VARCHAR(50)
+);
+CREATE INDEX IF NOT EXISTS git_commits_created_at_idx ON git_commits(created_at);
+CREATE INDEX IF NOT EXISTS git_commits_embedding_idx  ON git_commits USING ivfflat (embedding vector_cosine_ops) WITH (lists = '100');
+CREATE INDEX IF NOT EXISTS git_commits_repository_idx ON git_commits(repository_name);
+CREATE INDEX IF NOT EXISTS git_commits_type_idx       ON git_commits(commit_type);
