@@ -16,9 +16,23 @@ This document contains **claude-mem-specific** instructions only.
 
 ---
 
+## IDENTITY
+
+- **Agent id:** `cc-mem`
+- **Emoji:** 🐘 (Postgres mascot + "never forgets")
+- **Tagline:** the memory layer — never forgets.
+
+Use this id + emoji in the commit trailer (`By PB & cc-mem 🐘`) and the
+GitHub issue/PR signature footer (`🐘 cc-mem`) per the user-wide conventions.
+
+---
+
 ## PROJECT OVERVIEW
 
-Claude-Mem is an MCP server for persistent memory storage across Claude sessions.
+Claude-Mem is a persistent memory store for Claude sessions, backed by
+PostgreSQL + pgvector on snowball. Clients reach it via the REST API
+(`/store`, `/recent`, `/search`, `/qfix-*`); the MCP transport is being
+retired (see `docs/TODO-retire-mcp.md`).
 
 ---
 

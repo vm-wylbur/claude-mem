@@ -146,8 +146,26 @@ export interface DatabaseAdapter {
    * @returns Promise resolving to array of Memory objects with similarity scores
    */
   findSimilarMemories(
-    content: string, 
-    limit: number, 
+    content: string,
+    limit: number,
+    projectId?: string
+  ): Promise<Memory[]>;
+
+  /**
+   * Find memories via hybrid retrieval: BM25-style 'simple' FTS + pgvector
+   * cosine + pg_trgm fuzzy legs fused with Reciprocal Rank Fusion in the
+   * search_hybrid() SQL function. Closes the exact-token recall gap that
+   * vector-only search has (hostnames, flags, hashes). Same result shape as
+   * findSimilarMemories (similarity is the cosine score; ranking is by RRF).
+   *
+   * @param content - Query text (embedded for the vector leg, used verbatim for the lexical legs)
+   * @param limit - Maximum number of results to return
+   * @param projectId - Optional project filter
+   * @returns Promise resolving to array of Memory objects
+   */
+  findSimilarMemoriesHybrid(
+    content: string,
+    limit: number,
     projectId?: string
   ): Promise<Memory[]>;
 

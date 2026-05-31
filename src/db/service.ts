@@ -69,9 +69,15 @@ export interface Memory {
 export class DatabaseService {
     private adapter: DatabaseAdapter;
     private devProjectId: string | null = null;
+    // Kill-switch for the Phase 1 hybrid retrieval path. Off by default so
+    // deploying the code changes nothing until MCPMEM_HYBRID_SEARCH is set.
+    // Read once at construction: toggling requires a service restart (no
+    // code redeploy), since the server builds one DatabaseService at startup.
+    private readonly useHybridSearch: boolean;
 
     constructor(adapter: DatabaseAdapter) {
         this.adapter = adapter;
+        this.useHybridSearch = /^(1|true|yes|on)$/i.test(process.env.MCPMEM_HYBRID_SEARCH ?? '');
     }
 
     /**
@@ -158,6 +164,9 @@ export class DatabaseService {
             throw new Error('DatabaseService not initialized. Call initialize() first.');
         }
 
+        if (this.useHybridSearch) {
+            return this.adapter.findSimilarMemoriesHybrid(content, limit, this.devProjectId);
+        }
         return this.adapter.findSimilarMemories(content, limit, this.devProjectId);
     }
 

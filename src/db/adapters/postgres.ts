@@ -403,6 +403,33 @@ export class PostgresAdapter implements DatabaseAdapter {
     }
   }
 
+  //
+  // Hybrid Search (FTS + vector + trgm, RRF-fused in search_hybrid())
+  //
+
+  async findSimilarMemoriesHybrid(
+    content: string,
+    limit: number,
+    projectId?: string
+  ): Promise<Memory[]> {
+    if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
+
+    const client = await this.pool.connect();
+    try {
+      // Vector leg needs the query embedding; lexical legs use the raw text.
+      const queryVector = await generateEmbedding(content);
+
+      const result = await client.query(`
+        SELECT memory_id, project_id, content, content_type, metadata, created_at, similarity, score
+        FROM search_hybrid($1::text, $2::vector, $3::int, 60, $4)
+      `, [content, JSON.stringify(queryVector), limit, projectId ?? null]);
+
+      return result.rows;
+    } finally {
+      client.release();
+    }
+  }
+
   async searchByMetadata(
     query: Record<string, any>,
     projectId?: string

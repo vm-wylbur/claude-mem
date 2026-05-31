@@ -1,0 +1,20 @@
+{"id": 1, "kind": "exact-id", "target": "2dc5cf492ed6a658", "query": "upsmon -c fsd is destructive not a probe"}
+{"id": 2, "kind": "exact-id", "target": "d116e4ad25da9678", "query": "hrdag-ansible #612 1474 ansible-lint violations"}
+{"id": 3, "kind": "exact-id", "target": "e5b12cf29696be21", "query": "PR #561 closes #549 create-user backfill check_mode cascade"}
+{"id": 4, "kind": "exact-id", "target": "57eaa6ce2b0c3417", "query": "id_ed25519_sk_porky SK key fallback hammers the YubiKey"}
+{"id": 5, "kind": "exact-id", "target": "97a3e0ae60d7696d", "query": "ansible-lint --fix name[casing] orphans handlers"}
+{"id": 6, "kind": "exact-id", "target": "15ac184bfb2527ee", "query": "PR #550 snowball tfcs quota 53.8TB"}
+{"id": 7, "kind": "exact-id", "target": "6362d3e23ecc17cc", "query": "rsync --daemon --no-detach tfcs node-pull server on scott"}
+{"id": 8, "kind": "exact-id", "target": "a68b33c8398a49da", "query": "antkvm PiKVM out-of-band BIOS access channel"}
+{"id": 9, "kind": "exact-id", "target": "90b9a53ff010aabd", "query": "log_journald_disk_usage_gb warn 2.5G fail 3.0G"}
+{"id": 10, "kind": "exact-id", "target": "2267f2896ed4f5ca", "query": "scottools#11 Prometheus gauge rsync_etc false-RED"}
+{"id": 11, "kind": "id-topic", "target": "fbe59e0fe87ff43e", "query": "sugihara ControlMaster overnight death"}
+{"id": 12, "kind": "id-topic", "target": "8b739c350d9640e4", "query": "scott full-verify permafail merkle proof failed"}
+{"id": 13, "kind": "id-topic", "target": "938707df5450d8c9", "query": "km0 site location San Juan Puerto Rico"}
+{"id": 14, "kind": "id-topic", "target": "7965542873ea478d", "query": "lizo move to CDMX 8-wide raidz2 zpool migration"}
+{"id": 15, "kind": "id-topic", "target": "dffdd34f3182f4d", "query": "Proxmox qm destroy greedy disk deletion workaround"}
+{"id": 16, "kind": "conceptual", "target": "35d8cb81905d2a60", "query": "wrong tool to test fleet reachability before ansible"}
+{"id": 17, "kind": "conceptual", "target": "e7ae8fe133daec17", "query": "before alarming about missing SSH keys search memory first"}
+{"id": 18, "kind": "conceptual", "target": "e3b69afd471b342d", "query": "don't ask whether to continue, keep momentum until the task is done"}
+{"id": 19, "kind": "conceptual", "target": "6bcc4d132db21b1c", "query": "never batch dependent PR merges in one tool block"}
+{"id": 20, "kind": "conceptual", "target": "b2d23575d424abe0", "query": "when discovery returns empty did I look in the right place"}
