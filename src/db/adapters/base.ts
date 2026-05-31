@@ -114,7 +114,8 @@ export interface DatabaseAdapter {
     type: MemoryType,
     metadata: MemoryMetadata,
     projectId: string,
-    sourceKey?: string
+    sourceKey?: string,
+    sourceDocId?: string
   ): Promise<string>;
 
   /**

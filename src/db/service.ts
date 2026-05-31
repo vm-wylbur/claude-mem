@@ -108,13 +108,14 @@ export class DatabaseService {
         content: string,
         type: MemoryType,
         metadata: MemoryMetadata,
-        sourceKey?: string
+        sourceKey?: string,
+        sourceDocId?: string
     ): Promise<string> {
         if (!this.devProjectId) {
             throw new Error('DatabaseService not initialized. Call initialize() first.');
         }
 
-        return this.adapter.storeMemory(content, type, metadata, this.devProjectId, sourceKey);
+        return this.adapter.storeMemory(content, type, metadata, this.devProjectId, sourceKey, sourceDocId);
     }
 
     /**
@@ -125,9 +126,10 @@ export class DatabaseService {
         type: MemoryType,
         metadata: MemoryMetadata,
         projectId: string,
-        sourceKey?: string
+        sourceKey?: string,
+        sourceDocId?: string
     ): Promise<string> {
-        return this.adapter.storeMemory(content, type, metadata, projectId, sourceKey);
+        return this.adapter.storeMemory(content, type, metadata, projectId, sourceKey, sourceDocId);
     }
 
     /**
@@ -388,6 +390,46 @@ export class DatabaseService {
                    metadata = EXCLUDED.metadata`,
                 [doc.doc_id, doc.filename, doc.filepath, doc.content, doc.file_mtime, doc.doc_hash, JSON.stringify(doc.metadata)]
             );
+        } finally {
+            client.release();
+        }
+    }
+
+    /**
+     * Record one extraction decision (approved / edited / skipped) into the
+     * labeled set. doc_id links to lessons_learned_docs; stored_memory_id is
+     * the memory created for approved/edited (null for skipped). Returns the
+     * new decision_id.
+     */
+    async recordExtractionDecision(d: {
+        doc_id?: string | null;
+        doc_filename: string;
+        insight_number: number;
+        insight_title?: string | null;
+        insight_content: string;
+        insight_tags?: string[] | null;
+        action: 'approved' | 'edited' | 'skipped';
+        edited_content?: string | null;
+        skip_reason?: string | null;
+        stored_memory_id?: string | null;
+    }): Promise<number> {
+        const adapter = this.adapter as any;
+        if (!adapter.pool) {
+            throw new Error('PostgreSQL adapter not connected');
+        }
+        const client = await adapter.pool.connect();
+        try {
+            const res = await client.query(
+                `INSERT INTO extraction_decisions
+                   (doc_id, doc_filename, insight_number, insight_title, insight_content,
+                    insight_tags, action, edited_content, skip_reason, stored_memory_id)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                 RETURNING decision_id`,
+                [d.doc_id ?? null, d.doc_filename, d.insight_number, d.insight_title ?? null,
+                 d.insight_content, d.insight_tags ?? null, d.action,
+                 d.edited_content ?? null, d.skip_reason ?? null, d.stored_memory_id ?? null]
+            );
+            return res.rows[0].decision_id;
         } finally {
             client.release();
         }

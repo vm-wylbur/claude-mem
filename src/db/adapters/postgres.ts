@@ -221,7 +221,8 @@ export class PostgresAdapter implements DatabaseAdapter {
     type: MemoryType,
     metadata: MemoryMetadata,
     projectId: string,
-    sourceKey?: string
+    sourceKey?: string,
+    sourceDocId?: string
   ): Promise<string> {
     if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
 
@@ -234,6 +235,7 @@ export class PostgresAdapter implements DatabaseAdapter {
       const vector = await generateEmbeddingWithFallback(content);
       const embedding = vector ? JSON.stringify(vector) : null; // JSONB array for pgvector, or null
       const metadataJson = JSON.stringify(metadata);
+      const docId = sourceDocId ?? null; // provenance link to lessons_learned_docs(doc_id)
 
       let result;
       if (sourceKey) {
@@ -244,26 +246,28 @@ export class PostgresAdapter implements DatabaseAdapter {
         // PK on source_key also avoids colliding with content-hash ids.
         const memoryId = generateMemoryHash(sourceKey, 'source-key');
         result = await client.query(`
-          INSERT INTO memories (memory_id, project_id, content, content_type, metadata, embedding, source_key)
-          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          INSERT INTO memories (memory_id, project_id, content, content_type, metadata, embedding, source_key, source_doc_id)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
           ON CONFLICT (source_key) WHERE source_key IS NOT NULL DO UPDATE SET
             content = EXCLUDED.content,
             content_type = EXCLUDED.content_type,
             metadata = EXCLUDED.metadata,
             embedding = EXCLUDED.embedding,
+            source_doc_id = COALESCE(EXCLUDED.source_doc_id, memories.source_doc_id),
             updated_at = CURRENT_TIMESTAMP
           RETURNING memory_id
-        `, [memoryId, projectId, content, type, metadataJson, embedding, sourceKey]);
+        `, [memoryId, projectId, content, type, metadataJson, embedding, sourceKey, docId]);
       } else {
         // Unkeyed: original content-hash dedup behavior, unchanged.
         const memoryId = generateMemoryHash(content, type);
         result = await client.query(`
-          INSERT INTO memories (memory_id, project_id, content, content_type, metadata, embedding)
-          VALUES ($1, $2, $3, $4, $5, $6)
+          INSERT INTO memories (memory_id, project_id, content, content_type, metadata, embedding, source_doc_id)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
           ON CONFLICT (memory_id) DO UPDATE SET
+            source_doc_id = COALESCE(EXCLUDED.source_doc_id, memories.source_doc_id),
             updated_at = CURRENT_TIMESTAMP
           RETURNING memory_id
-        `, [memoryId, projectId, content, type, metadataJson, embedding]);
+        `, [memoryId, projectId, content, type, metadataJson, embedding, docId]);
       }
 
       await client.query('COMMIT');

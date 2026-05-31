@@ -5,14 +5,15 @@ export async function storeDevProgress(
     content: string,
     type: MemoryType = 'decision',
     metadata: Partial<MemoryMetadata> = {},
-    sourceKey?: string
+    sourceKey?: string,
+    sourceDocId?: string
 ): Promise<string> {
     const fullMetadata: MemoryMetadata = {
         date: new Date().toISOString(),
         ...metadata
     };
 
-    return db.storeDevMemory(content, type, fullMetadata, sourceKey);
+    return db.storeDevMemory(content, type, fullMetadata, sourceKey, sourceDocId);
 }
 
 // Store our initial development progress
