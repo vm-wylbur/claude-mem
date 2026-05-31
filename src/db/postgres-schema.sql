@@ -186,9 +186,18 @@ CREATE INDEX IF NOT EXISTS idx_docs_created_at ON lessons_learned_docs(created_a
 CREATE INDEX IF NOT EXISTS idx_docs_file_mtime ON lessons_learned_docs(file_mtime);
 CREATE INDEX IF NOT EXISTS idx_docs_doc_hash   ON lessons_learned_docs(doc_hash);
 
--- Provenance: link a distilled memory back to its source doc.
-ALTER TABLE memories ADD COLUMN IF NOT EXISTS source_doc_id TEXT
-    REFERENCES lessons_learned_docs(doc_id);
+-- Provenance: link a distilled memory back to its source doc. Split the
+-- column-add from the FK (like source_key above) so this is idempotent on a DB
+-- where the column already exists WITHOUT the constraint: ADD COLUMN's inline
+-- REFERENCES only fires when the column is first created, so a pre-existing
+-- plain column (as on live before 2026-05-31) would never gain the FK.
+ALTER TABLE memories ADD COLUMN IF NOT EXISTS source_doc_id TEXT;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'memories_source_doc_id_fkey') THEN
+    ALTER TABLE memories ADD CONSTRAINT memories_source_doc_id_fkey
+      FOREIGN KEY (source_doc_id) REFERENCES lessons_learned_docs(doc_id);
+  END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_memories_source_doc_id ON memories(source_doc_id);
 
 -- The labeled set: one row per proposed insight, recording the human decision
