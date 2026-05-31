@@ -219,6 +219,17 @@ CREATE TABLE IF NOT EXISTS extraction_decisions (
 CREATE INDEX IF NOT EXISTS idx_extraction_decisions_action    ON extraction_decisions(action);
 CREATE INDEX IF NOT EXISTS idx_extraction_decisions_doc_id    ON extraction_decisions(doc_id);
 CREATE INDEX IF NOT EXISTS idx_extraction_decisions_timestamp ON extraction_decisions("timestamp" DESC);
+-- Retry/re-decision idempotency: one current decision per (doc_id, insight_number),
+-- the arbiter for the writer's ON CONFLICT. A POST /decision that commits server-side
+-- but times out client-side must not double-log on retry -- the labeled set is the
+-- product. NULLS DISTINCT (default) exempts doc-less rows (doc_id IS NULL); the
+-- harvester always supplies doc_id, so it gets the dedup. Positional key: a
+-- re-distillation that changes a doc's insight count can leave stale high-numbered
+-- rows -- revisit when the distiller's re-run policy is defined. Dry-run-verified
+-- (rolled-back txn) to build clean against live's 115 seed rows on 2026-05-31 --
+-- 0 dups on the non-null pair; apply to live before deploying the ON CONFLICT writer.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_extraction_decisions_doc_insight
+    ON extraction_decisions(doc_id, insight_number);
 
 -- git_commits: git-integration feature, independent of the doc harvester.
 CREATE TABLE IF NOT EXISTS git_commits (

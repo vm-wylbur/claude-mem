@@ -398,8 +398,9 @@ export class DatabaseService {
     /**
      * Record one extraction decision (approved / edited / skipped) into the
      * labeled set. doc_id links to lessons_learned_docs; stored_memory_id is
-     * the memory created for approved/edited (null for skipped). Returns the
-     * new decision_id.
+     * the memory created for approved/edited (null for skipped). Upserts on
+     * (doc_id, insight_number); returns the decision_id (newly inserted, or
+     * the existing row's id when a retry/re-decision updates in place).
      */
     async recordExtractionDecision(d: {
         doc_id?: string | null;
@@ -420,10 +421,26 @@ export class DatabaseService {
         const client = await adapter.pool.connect();
         try {
             const res = await client.query(
+                // ON CONFLICT (doc_id, insight_number): a retried POST /decision
+                // (committed server-side, timed out client-side) upserts instead of
+                // double-logging -- the labeled set is the product. A genuine
+                // re-decision (skip->approve) also replaces, so this is current-state,
+                // not an append log. NULLS DISTINCT (default) exempts doc-less rows;
+                // the harvester always supplies doc_id, so it gets the dedup.
                 `INSERT INTO extraction_decisions
                    (doc_id, doc_filename, insight_number, insight_title, insight_content,
                     insight_tags, action, edited_content, skip_reason, stored_memory_id)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                 ON CONFLICT (doc_id, insight_number) DO UPDATE SET
+                   doc_filename     = EXCLUDED.doc_filename,
+                   insight_title    = EXCLUDED.insight_title,
+                   insight_content  = EXCLUDED.insight_content,
+                   insight_tags     = EXCLUDED.insight_tags,
+                   action           = EXCLUDED.action,
+                   edited_content   = EXCLUDED.edited_content,
+                   skip_reason      = EXCLUDED.skip_reason,
+                   stored_memory_id = EXCLUDED.stored_memory_id,
+                   "timestamp"      = CURRENT_TIMESTAMP
                  RETURNING decision_id`,
                 [d.doc_id ?? null, d.doc_filename, d.insight_number, d.insight_title ?? null,
                  d.insight_content, d.insight_tags ?? null, d.action,
