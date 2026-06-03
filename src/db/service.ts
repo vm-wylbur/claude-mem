@@ -396,6 +396,86 @@ export class DatabaseService {
     }
 
     /**
+     * Fetch one lessons-learned doc by its doc_id (PK), with full content.
+     * Returns null if no such doc. Backs GET /docs/:doc_id, which eval.py uses
+     * in place of the ssh-psql load_docs path (the manifest omits content).
+     */
+    async getDoc(doc_id: string): Promise<{
+        doc_id: string; filename: string; filepath: string; content: string;
+        file_mtime: string; doc_hash: string; metadata: any;
+    } | null> {
+        const adapter = this.adapter as any;
+        if (!adapter.pool) {
+            throw new Error('PostgreSQL adapter not connected');
+        }
+        const client = await adapter.pool.connect();
+        try {
+            const result = await client.query(
+                `SELECT doc_id, filename, filepath, content, file_mtime, doc_hash, metadata
+                 FROM lessons_learned_docs WHERE doc_id = $1`,
+                [doc_id]
+            );
+            return result.rows[0] ?? null;
+        } finally {
+            client.release();
+        }
+    }
+
+    /**
+     * The distill backlog: raw docs not yet processed, DISTINCT by doc_hash
+     * (distill once per distinct content), newest-representative per hash. A
+     * doc_hash is excluded once ANY of its doc_ids has an extraction_decision
+     * OR a source_doc_id-linked memory -- exclusion is by doc_hash, NOT by the
+     * DISTINCT ON-picked doc_id. The same content can live at several filepaths
+     * (several doc_ids); deciding/distilling one must retire all siblings. This
+     * is the corrected, server-side form of distill.py's backlog query -- the
+     * by-doc_id version let decided content resurface via its sibling paths
+     * (the HIGH dedup bug). Backs GET /docs/backlog. total = distinct
+     * non-excluded doc_hashes (for pagination); limit/offset page the reps.
+     */
+    async getBacklogDocs(limit: number, offset: number): Promise<{
+        docs: Array<{ doc_id: string; doc_hash: string; filepath: string; content: string }>;
+        total: number;
+    }> {
+        const adapter = this.adapter as any;
+        if (!adapter.pool) {
+            throw new Error('PostgreSQL adapter not connected');
+        }
+        // doc_hashes whose content is already decided or distilled (any sibling).
+        // doc_hash is NOT NULL, so NOT IN is safe (no NULL-swallows-all hazard).
+        const excludedHashes = `
+            SELECT DISTINCT d.doc_hash
+            FROM lessons_learned_docs d
+            WHERE d.doc_id IN (SELECT doc_id FROM extraction_decisions WHERE doc_id IS NOT NULL)
+               OR d.doc_id IN (SELECT source_doc_id FROM memories WHERE source_doc_id IS NOT NULL)
+        `;
+        const client = await adapter.pool.connect();
+        try {
+            const totalRes = await client.query(
+                `SELECT count(*)::int AS total FROM (
+                    SELECT DISTINCT doc_hash FROM lessons_learned_docs
+                    WHERE doc_hash NOT IN (${excludedHashes})
+                 ) t`
+            );
+            const docsRes = await client.query(
+                `SELECT doc_id, doc_hash, filepath, content FROM (
+                    SELECT DISTINCT ON (doc_hash)
+                           doc_id, doc_hash, filepath, content, created_at
+                    FROM lessons_learned_docs
+                    WHERE doc_hash NOT IN (${excludedHashes})
+                    ORDER BY doc_hash, created_at, doc_id
+                 ) reps
+                 ORDER BY doc_hash
+                 LIMIT $1 OFFSET $2`,
+                [limit, offset]
+            );
+            return { docs: docsRes.rows, total: totalRes.rows[0].total };
+        } finally {
+            client.release();
+        }
+    }
+
+    /**
      * Record one extraction decision (approved / edited / skipped) into the
      * labeled set. doc_id links to lessons_learned_docs; stored_memory_id is
      * the memory created for approved/edited (null for skipped). Upserts on

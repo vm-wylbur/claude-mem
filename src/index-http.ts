@@ -153,6 +153,31 @@ app.get('/docs/manifest', async (_req: express.Request, res: express.Response): 
     res.json({ docs });
 });
 
+// GET /docs/backlog — distill's worklist (replaces its ssh-psql query).
+// MUST be registered before GET /docs/:doc_id, or the param route captures
+// "backlog" as a doc_id. ("manifest" above is safe — it is registered first.)
+app.get('/docs/backlog', async (req: express.Request, res: express.Response): Promise<void> => {
+    // Clamp explicitly: a negative limit is truthy (so `|| 50` would not fire)
+    // and reaches Postgres as `LIMIT -5`, a syntax error. <=0 / NaN -> default.
+    const rawLimit = parseInt(req.query['limit'] as string, 10);
+    const rawOffset = parseInt(req.query['offset'] as string, 10);
+    const limit = Math.min(rawLimit > 0 ? rawLimit : 50, 500);
+    const offset = rawOffset > 0 ? rawOffset : 0;
+    const { docs, total } = await dbService.getBacklogDocs(limit, offset);
+    res.json({ docs, limit, offset, total });
+});
+
+// GET /docs/:doc_id — full doc incl. content (replaces eval's load_docs).
+// Param route: keep last among the /docs GETs so /manifest and /backlog win.
+app.get('/docs/:doc_id', async (req: express.Request, res: express.Response): Promise<void> => {
+    const doc = await dbService.getDoc(req.params['doc_id']);
+    if (!doc) {
+        res.status(404).json({ error: 'doc not found' });
+        return;
+    }
+    res.json({ doc });
+});
+
 app.post('/docs', async (req: express.Request, res: express.Response): Promise<void> => {
     const b = req.body as Partial<{
         doc_id: string; filename: string; filepath: string;
