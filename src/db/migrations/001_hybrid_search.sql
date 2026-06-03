@@ -29,7 +29,9 @@ CREATE INDEX IF NOT EXISTS idx_memories_content_fts  ON memories USING gin (cont
 CREATE INDEX IF NOT EXISTS idx_memories_content_trgm ON memories USING gin (content gin_trgm_ops);
 
 -- Three-leg RRF fusion. proj_id NULL = no project filter; pass the dev
--- project id to match the REST /search scope. recency_wt > 0 adds a gentle
+-- project id to match the REST /search scope. proj_id and memories.project_id
+-- are both TEXT (the app's 16-char hex project ids; see postgres-schema.sql), so
+-- this is a plain text=text match -- no cast. recency_wt > 0 adds a gentle
 -- 30-day-scale recency boost (default off so ranking is reproducible).
 -- DROP first: CREATE OR REPLACE cannot alter the RETURNS TABLE column set.
 DROP FUNCTION IF EXISTS search_hybrid(text, vector, int, int, text, int, double precision);

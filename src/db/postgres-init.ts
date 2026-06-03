@@ -10,7 +10,6 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { DatabaseConfig } from './adapters/base.js';
-import { PostgresAdapter } from './adapters/postgres.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const { Pool } = pg;
@@ -32,17 +31,36 @@ export async function initializePostgresDatabase(config: DatabaseConfig): Promis
 
   console.error('🚀 Initializing PostgreSQL database...');
 
-  // Create adapter to handle connection (including SSH tunnel)
-  const adapter = new PostgresAdapter(config);
-  
+  const pgConfig = config.postgresql;
+
+  // Use a RAW pool, not PostgresAdapter.connect(): the adapter's connect()
+  // asserts the core tables (and pgvector) already exist and throws otherwise
+  // -- a runtime-readiness guard. Routing init through it is a chicken-and-egg
+  // bug: a fresh/empty DB can never be initialized because the very tables init
+  // creates are required before it runs (claude-mem #7). The base schema's
+  // `CREATE EXTENSION IF NOT EXISTS vector` + table DDL run fine on a raw
+  // connection.
+  const pool = new Pool({
+    host: pgConfig.hosts[0],
+    port: pgConfig.port || 5432,
+    database: pgConfig.database,
+    user: pgConfig.user,
+    password: pgConfig.password,
+    ssl: pgConfig.sslmode ? { rejectUnauthorized: false } : false,
+    max: pgConfig.max_connections || 5,
+    connectionTimeoutMillis: pgConfig.connection_timeout_ms || 5000,
+  });
+
+  // An 'error' event on an idle pooled client with no listener is an unhandled
+  // EventEmitter error -> process crash. Mirror the adapter's handler so a
+  // mid-init connection drop logs instead of aborting the Node process.
+  pool.on('error', (err) => {
+    console.error('📊 Database pool error during init (connection drop):', err.message);
+  });
+
   try {
-    // Connect with tunnel if needed
-    await adapter.connect();
-    
-    // Get the underlying pool for schema operations
-    const pool = (adapter as any).pool as pg.Pool;
     const client = await pool.connect();
-    
+
     try {
       console.error('📄 Loading PostgreSQL schema...');
       
@@ -54,9 +72,17 @@ export async function initializePostgresDatabase(config: DatabaseConfig): Promis
       
       // Execute schema (this will create tables, indexes, and extensions)
       await client.query(schema);
-      
+
       console.error('✅ PostgreSQL database initialized successfully');
-      
+
+      // Apply versioned migrations on top of the base schema. The base schema
+      // is the table-of-record snapshot; migrations/*.sql carry additive,
+      // post-snapshot changes (e.g. 001_hybrid_search.sql defines
+      // search_hybrid(), which the /search path calls at runtime). Without
+      // this, a fresh init produced a DB missing search_hybrid -> /search
+      // threw "function search_hybrid(...) does not exist" (claude-mem #7).
+      await applyMigrations(client);
+
       // Verify pgvector extension
       const extensionCheck = await client.query(`
         SELECT extversion FROM pg_extension WHERE extname = 'vector'
@@ -91,10 +117,87 @@ export async function initializePostgresDatabase(config: DatabaseConfig): Promis
     } finally {
       client.release();
     }
-    
+
   } finally {
-    await adapter.disconnect();
+    await pool.end();
   }
+}
+
+/**
+ * Apply versioned SQL migrations from src/db/migrations/ on top of the base
+ * schema. Each migration file is applied at most once, tracked by filename in a
+ * schema_migrations table, in lexical (zero-padded numeric prefix) order. Each
+ * file runs in its own transaction so a failure rolls back cleanly and is not
+ * recorded -- re-running init then retries it. The migration files are written
+ * to be idempotent regardless (IF NOT EXISTS / OR REPLACE), so this tracking is
+ * a guard against needless re-execution, not the sole correctness mechanism.
+ */
+async function applyMigrations(client: pg.PoolClient): Promise<void> {
+  const migrationsDir = path.join(__dirname, 'migrations');
+
+  let files: string[];
+  try {
+    files = (await fs.readdir(migrationsDir))
+      .filter(f => f.endsWith('.sql'))
+      .sort();
+  } catch (err: any) {
+    if (err?.code === 'ENOENT') {
+      console.error('ℹ️  No migrations directory found - skipping migrations');
+      return;
+    }
+    throw err;
+  }
+
+  if (files.length === 0) {
+    console.error('ℹ️  No migrations to apply');
+    return;
+  }
+
+  console.error(`🧭 Applying migrations (${files.length} on disk)...`);
+
+  // Track applied migrations by filename. Created here (not in the base schema)
+  // so the runner is self-contained and works against any DB, including one
+  // initialized before this table existed.
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      filename   TEXT PRIMARY KEY,
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  const appliedResult = await client.query('SELECT filename FROM schema_migrations');
+  const applied = new Set<string>(appliedResult.rows.map(r => r.filename));
+
+  for (const file of files) {
+    if (applied.has(file)) {
+      console.error(`   ⏭  ${file} (already applied)`);
+      continue;
+    }
+
+    const sql = await fs.readFile(path.join(migrationsDir, file), 'utf-8');
+    try {
+      await client.query('BEGIN');
+      await client.query(sql);
+      await client.query(
+        'INSERT INTO schema_migrations (filename) VALUES ($1)',
+        [file]
+      );
+      await client.query('COMMIT');
+      console.error(`   ✅ ${file}`);
+    } catch (err) {
+      // ROLLBACK in its own try/catch: if the connection dropped during the
+      // migration, ROLLBACK throws too and would otherwise mask the real cause.
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackErr) {
+        console.error(`   ⚠️  ROLLBACK also failed: ${rollbackErr}`);
+      }
+      console.error(`   ❌ ${file} failed - rolled back, not recorded`);
+      throw err;
+    }
+  }
+
+  console.error('✅ Migrations applied');
 }
 
 /**

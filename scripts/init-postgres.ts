@@ -24,7 +24,7 @@
  */
 
 import { config } from 'dotenv';
-import { getDatabaseConfig } from '../src/config.js';
+import { getDatabaseConfigToml } from '../src/config-toml.js';
 import { initializePostgresDatabase } from '../src/db/postgres-init.js';
 
 // Load environment variables
@@ -35,8 +35,9 @@ async function main() {
     console.error('🚀 PostgreSQL Database Initialization');
     console.error('=====================================\n');
     
-    // Get PostgreSQL configuration
-    const dbConfig = getDatabaseConfig();
+    // Get PostgreSQL configuration (TOML file + MCPMEM_PG_* env overrides).
+    // The legacy getDatabaseConfig() was retired (throws) -- use the TOML loader.
+    const dbConfig = await getDatabaseConfigToml();
     
     if (dbConfig.type !== 'postgresql') {
       console.error('❌ Set MCPMEM_DB_TYPE=postgresql to use this script');

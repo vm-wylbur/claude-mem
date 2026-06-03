@@ -6,19 +6,29 @@
 -- Enable pgvector extension for vector similarity search
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- Project information
+-- Project information.
+-- project_id is TEXT (16-char zero-padded hex), not SERIAL: createProject()
+-- (adapters/postgres.ts) computes the next id as nextId.toString(16).padStart(16,'0')
+-- and inserts it explicitly; getProject() returns it as a string. The app has
+-- always treated project_id as a hex string -- SERIAL/integer here (and bigint
+-- on live) is original drift (#7).
 CREATE TABLE IF NOT EXISTS projects (
-    project_id SERIAL PRIMARY KEY,
+    project_id TEXT PRIMARY KEY,
     name VARCHAR(255) NOT NULL UNIQUE,
     description TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_accessed TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Memory storage with pgvector embeddings
+-- Memory storage with pgvector embeddings.
+-- memory_id is TEXT (xxHash hex), not SERIAL: the service generates the id at
+-- insert time (generateMemoryHash, adapters/postgres.ts) and inserts it
+-- explicitly -- nothing relies on a sequence. Live is TEXT (migrate-to-hash-ids,
+-- docs/archives/hash-id-migration.md); a SERIAL declaration here both diverged
+-- from live and would reject the service's text ids on a fresh DB.
 CREATE TABLE IF NOT EXISTS memories (
-    memory_id SERIAL PRIMARY KEY,
-    project_id INTEGER NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
+    memory_id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
     content TEXT NOT NULL,
     content_type VARCHAR(50) NOT NULL CHECK (content_type IN ('conversation', 'code', 'decision', 'reference')),
     metadata JSONB NOT NULL DEFAULT '{}',
@@ -56,7 +66,7 @@ CREATE TABLE IF NOT EXISTS tags (
 
 -- Many-to-many relationship between memories and tags
 CREATE TABLE IF NOT EXISTS memory_tags (
-    memory_id INTEGER NOT NULL REFERENCES memories(memory_id) ON DELETE CASCADE,
+    memory_id TEXT NOT NULL REFERENCES memories(memory_id) ON DELETE CASCADE,
     tag_id INTEGER NOT NULL REFERENCES tags(tag_id) ON DELETE CASCADE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (memory_id, tag_id)
@@ -65,8 +75,8 @@ CREATE TABLE IF NOT EXISTS memory_tags (
 -- Memory relationships (e.g., "builds_on", "references", "contradicts")
 CREATE TABLE IF NOT EXISTS memory_relationships (
     relationship_id SERIAL PRIMARY KEY,
-    source_memory_id INTEGER NOT NULL REFERENCES memories(memory_id) ON DELETE CASCADE,
-    target_memory_id INTEGER NOT NULL REFERENCES memories(memory_id) ON DELETE CASCADE,
+    source_memory_id TEXT NOT NULL REFERENCES memories(memory_id) ON DELETE CASCADE,
+    target_memory_id TEXT NOT NULL REFERENCES memories(memory_id) ON DELETE CASCADE,
     relationship_type VARCHAR(50) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(source_memory_id, target_memory_id, relationship_type)
@@ -96,9 +106,13 @@ CREATE TRIGGER update_memories_updated_at
     FOR EACH ROW 
     EXECUTE FUNCTION update_updated_at_column();
 
--- Insert default development project
-INSERT INTO projects (name, description)
+-- Insert default development project. project_id is supplied explicitly as the
+-- canonical first hex id ('0000000000000001', the same value createProject()
+-- would generate) since project_id is TEXT with no sequence default; seeding
+-- the 16-char form keeps createProject()'s LENGTH/value ordering consistent.
+INSERT INTO projects (project_id, name, description)
 VALUES (
+    '0000000000000001',
     'memory-mcp-development',
     'Development history and decisions for the Memory MCP Server project'
 ) ON CONFLICT (name) DO NOTHING;
@@ -165,9 +179,13 @@ CREATE INDEX IF NOT EXISTS idx_qf_metadata ON queue_fixes USING GIN(metadata);
 -- carry data (304 / 115 / 182 rows) but had drifted OUT of this committed schema
 -- -- a re-init would not have recreated them. See docs/harvester-plan-20260531.md.
 --
--- NOTE: broader drift remains beyond this fix -- the live memories.memory_id is
--- TEXT (xxHash hex, per migrate-to-hash-ids) while this file still declares it
--- SERIAL. The tables below match the live types (TEXT memory references).
+-- NOTE: memory_id and project_id are now TEXT here (fixed in #7) to match how
+-- the application actually generates them -- memory_id = xxHash hex
+-- (generateMemoryHash, migrate-to-hash-ids), project_id = 16-char hex
+-- (createProject). The memory_tags / memory_relationships FK columns are TEXT
+-- too. Live still carries the original drift (project_id bigint, memory_id was
+-- migrated to text); a fresh init from this file is now internally consistent
+-- with the app's hex-string id model.
 
 -- Tier 1: raw markdown docs (the harvest corpus of record). doc_hash (sha256 of
 -- content) is the content-level change/dedup key; filepath is per-path provenance.
