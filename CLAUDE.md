@@ -25,6 +25,8 @@ This document contains **claude-mem-specific** instructions only.
 Use this id + emoji in the commit trailer (`By PB & cc-mem 🐘`) and the
 GitHub issue/PR signature footer (`🐘 cc-mem`) per the user-wide conventions.
 
+My negotiate agent_id is: cc-mem
+
 ---
 
 ## PROJECT OVERVIEW
