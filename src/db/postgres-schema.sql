@@ -169,15 +169,16 @@ CREATE INDEX IF NOT EXISTS idx_qf_metadata ON queue_fixes USING GIN(metadata);
 -- TEXT (xxHash hex, per migrate-to-hash-ids) while this file still declares it
 -- SERIAL. The tables below match the live types (TEXT memory references).
 
--- Tier 1: raw markdown docs (the harvest corpus of record). doc_hash (blake3 of
+-- Tier 1: raw markdown docs (the harvest corpus of record). doc_hash (sha256 of
 -- content) is the content-level change/dedup key; filepath is per-path provenance.
+-- sha256, not blake3, despite history -- the hash fn was always sha256 (neg-305c49e5).
 CREATE TABLE IF NOT EXISTS lessons_learned_docs (
-    doc_id TEXT PRIMARY KEY,                  -- blake3 of filepath
+    doc_id TEXT PRIMARY KEY,                  -- sha256 of filepath
     filename TEXT NOT NULL,
     filepath TEXT NOT NULL UNIQUE,
     content TEXT NOT NULL,                    -- full markdown
     file_mtime TIMESTAMPTZ NOT NULL,
-    doc_hash TEXT NOT NULL,                   -- blake3 of content
+    doc_hash TEXT NOT NULL,                   -- sha256 of content
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     metadata JSONB DEFAULT '{}'
 );

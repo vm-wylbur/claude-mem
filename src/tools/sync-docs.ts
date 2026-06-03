@@ -119,8 +119,8 @@ export class SyncDocsTool extends BaseMCPTool<SyncDocsParams> {
         }
 
         const content = readFileSync(filepath, 'utf-8');
-        const doc_hash = this.blake3Hash(content);
-        const doc_id = this.blake3Hash(filepath);
+        const doc_hash = this.sha256Hash(content);
+        const doc_id = this.sha256Hash(filepath);
 
         files.push({
           filepath,
@@ -237,9 +237,11 @@ export class SyncDocsTool extends BaseMCPTool<SyncDocsParams> {
     return lines.join('\\n');
   }
 
-  private blake3Hash(input: string): string {
-    // Using sha256 for now since Node.js doesn't have blake3 built-in
-    // TODO: Add blake3 npm package later for better performance
+  private sha256Hash(input: string): string {
+    // doc_hash + doc_id are sha256 by ratified decision (neg-305c49e5; plan Decision C
+    // amended blake3->sha256). NOT blake3 despite the legacy name/TODO this replaced:
+    // migrating would invalidate every existing doc_hash, and cc-dots's marker is
+    // locked to sha256. The marker must hash the SAME input bytes used here.
     return createHash('sha256').update(input).digest('hex');
   }
 }
