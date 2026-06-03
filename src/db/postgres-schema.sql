@@ -57,9 +57,12 @@ ALTER TABLE memories ADD COLUMN IF NOT EXISTS source_key TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_memories_source_key
     ON memories(source_key) WHERE source_key IS NOT NULL;
 
--- Tag system
+-- Tag system. tag_id is TEXT (hash hex), not SERIAL: generateTagHash()
+-- (utils/hash.ts) produces the id and addMemoryTags() inserts it explicitly --
+-- same hex-id model as memory_id / project_id. SERIAL here rejected the app's
+-- hex tag ids on a fresh DB (#7 follow-up).
 CREATE TABLE IF NOT EXISTS tags (
-    tag_id SERIAL PRIMARY KEY,
+    tag_id TEXT PRIMARY KEY,
     name VARCHAR(100) NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -67,7 +70,7 @@ CREATE TABLE IF NOT EXISTS tags (
 -- Many-to-many relationship between memories and tags
 CREATE TABLE IF NOT EXISTS memory_tags (
     memory_id TEXT NOT NULL REFERENCES memories(memory_id) ON DELETE CASCADE,
-    tag_id INTEGER NOT NULL REFERENCES tags(tag_id) ON DELETE CASCADE,
+    tag_id TEXT NOT NULL REFERENCES tags(tag_id) ON DELETE CASCADE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (memory_id, tag_id)
 );
