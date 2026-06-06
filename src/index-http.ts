@@ -81,7 +81,9 @@ const restQuickStore = new QuickStoreTool(dbService, storeMemoryWithTags, detect
 const restRecentCtx = new GetRecentContextTool(dbService);
 
 const app = express();
-app.use(express.json());
+// Default Express JSON body limit is 100 KB; high-signal design/incident docs
+// routinely exceed that (issue #8). 5 MB covers any realistic markdown doc.
+app.use(express.json({ limit: '5mb' }));
 
 // Belt-and-suspenders auth on top of Tailscale network-layer protection.
 // If CLAUDE_MEM_SECRET is set, all requests must include the matching header.
