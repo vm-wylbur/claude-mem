@@ -29,6 +29,10 @@ logs/
 *.log
 
 # Test coverage
-coverage/ 
+coverage/
+
+# Python artifacts (eval/ rerank harness is PEP-723 uv scripts)
+__pycache__/
+*.pyc
 # oh-my-claudecode session state (omc deprecated)
 .omc/

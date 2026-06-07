@@ -1,5 +1,0 @@
-# Local harvest state — not committed (provenance/labeled-set lives here in v1).
-ledger.jsonl
-*.manifest.jsonl
-fixtures/
-__pycache__/
