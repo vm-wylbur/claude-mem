@@ -34,8 +34,8 @@ CREATE TABLE IF NOT EXISTS memories (
     metadata JSONB NOT NULL DEFAULT '{}',
     embedding vector(768), -- 768 dimensions for nomic-embed-text
     source_key TEXT, -- stable upsert key for file-mirrored memories (Track 2b); NULL = content-hash dedup
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,  -- tztz: matches live; was TIMESTAMP (naive) drift, see migration 002
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Indexes for performance
