@@ -39,7 +39,6 @@ export async function storeInitialProgress(db: DatabaseService): Promise<void> {
                 'package.json, tsconfig.json - Project configuration'
             ],
             dependencies_added: [
-                '@modelcontextprotocol/sdk@^1.7.0',
                 'pg@^8.11.3',
                 'node-fetch@^3.3.2',
                 'zod@^3.22.4'

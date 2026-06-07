@@ -1,6 +1,8 @@
 # Claude Memory
 
-A long-term memory storage system for Claude and other LLMs using the Model Context Protocol (MCP) standard. This system helps LLMs remember the context of work done over the entire history of a project, even across multiple sessions. It uses semantic search with embeddings to provide relevant context from past interactions and development decisions.
+A long-term memory store for Claude and other LLM sessions, served over a small REST API backed by PostgreSQL + pgvector. It helps LLMs remember the context of work done over the whole history of a project, across sessions, using semantic search over embeddings of past interactions and decisions.
+
+Clients reach it through the REST endpoints (`/store`, `/recent`, `/search`, `/docs`, `/qfix-*`) — typically via thin shell shims (`~/.claude/lib/mem-*.sh`) called from Claude Code hooks and skills. The earlier MCP transport has been retired (issue #4); REST is the sole client surface.
 
 ## Features
 
@@ -50,30 +52,23 @@ A long-term memory storage system for Claude and other LLMs using the Model Cont
 
 ## Usage
 
-1. Start the server in development mode:
+The HTTP server (`dist/index-http.js`) is the only entry point. It binds `0.0.0.0:${CLAUDE_MEM_PORT:-3456}` and serves the REST API.
+
+1. Build, then start:
    ```bash
-   npm run dev
+   npm run build
+   npm start          # == node dist/index-http.js
    ```
-   This will:
-   - Compile TypeScript
-   - Copy schema files
-   - Start the server with auto-reload
 
-2. The server connects via stdio for Cursor compatibility
+2. In production it runs as a systemd service on the host that owns PostgreSQL (`scripts/claude-mem-http.service`), and clients reach it over Tailscale.
 
-### Important: Rebuilding After Changes
+### Auth
 
-When you make code changes and want to launch a new Claude instance that uses the updated MCP server:
+If `CLAUDE_MEM_SECRET` is set, every request must carry `X-Claude-Mem-Secret: <secret>`. This is a belt-and-suspenders check on top of the Tailscale network boundary; unset it only for a fully trusted local loopback.
 
-```bash
-# Always rebuild before starting a new Claude session
-npm run build
+### Rebuilding after changes
 
-# Then launch your new Claude instance
-# The MCP server will use the updated compiled code
-```
-
-**Why this matters**: Claude instances cache the MCP server binary. Without rebuilding, new Claude sessions will use the old version of your code and won't see recent changes like enhanced diagnostics or new tools.
+`npm run build` recompiles TypeScript and copies the schema + migration files into `dist/`. Restart the service (`systemctl restart claude-mem-http`) to pick up the new build.
 
 ## Configuration
 
@@ -111,25 +106,27 @@ Claude Memory uses PostgreSQL with pgvector for high-performance semantic search
 - Full-text search capabilities
 - Transactional consistency
 
-## MCP Tools
+## REST API
 
-The following tools are available through the MCP protocol:
+All endpoints accept/return JSON and require the `X-Claude-Mem-Secret` header when the server has a secret configured.
 
-### Memory Management
-- `store-dev-memory`: Create detailed memories with metadata, tags, and relationships
-- `quick-store`: Simple memory storage with auto-detection
-- `list-dev-memories`: Browse recent memories with pagination
-- `get-dev-memory`: Retrieve specific memory by ID
-- `get-recent-context`: Get recent memories for session continuity
+### Memories
+- `POST /store` — store a memory. Body `{content, tags?, source_key?}`. `source_key` makes the write an upsert (re-store under the same key edits in place + re-embeds).
+- `GET /recent?project=&n=` — recent memories (returns tags). Without `project`, returns the recent-context view.
+- `POST /search` — semantic search over memory embeddings. Body `{query, limit?}` → `{memories:[…]}` (content + metadata + similarity; no tags).
 
-### Search & Discovery
-- `search`: Basic semantic search using vector embeddings
-- `search-enhanced`: Advanced search with filtering and scoring
-- `get-all-tags`: Browse available tags for discovery
-- `list-memories-by-tag`: Find memories by specific tags
+### Doc harvester (lessons_learned_docs)
+- `GET /docs/manifest` — change-detection manifest for the distiller.
+- `GET /docs/backlog?limit=&offset=` — undistilled-doc worklist (deduped by `doc_hash`).
+- `GET /docs/:doc_id` — one raw doc with full content.
+- `POST /docs` — upsert a raw doc. `doc_hash` is derived server-side from `content` (issue #6); a client-sent value is accepted for back-compat but ignored.
+- `POST /harvest` — store a distilled memory linked to its `source_doc_id`.
+- `POST /decision` — log a keep/edit/skip extraction decision into the labeled set.
 
-### System
-- `memory-overview`: System status, statistics, and usage guide
+### IaC drift queue (queue_fixes)
+- `POST /qfix-store` — record a host fix that needs encoding into IaC.
+- `GET /qfix-list?target_repo=&status=&host=&limit=` — list entries (FIFO).
+- `POST /qfix-mark` — mark an entry consumed / escalated / superseded.
 
 ## Development
 
@@ -147,7 +144,7 @@ This will:
 ## Dependencies
 
 Key dependencies:
-- `@modelcontextprotocol/sdk@^1.7.0`: MCP protocol implementation
+- `express@^5.1.0`: HTTP server for the REST API
 - `pg@^8.16.3`: PostgreSQL database interface
 - `toml@^3.0.0`: Configuration file parsing
 - `xxhash-wasm@^1.1.0`: Fast hash generation
@@ -163,10 +160,10 @@ claude-mem/
 │   │   ├── adapters/   # Database adapters (PostgreSQL)
 │   │   ├── init.ts     # Database initialization
 │   │   └── service.ts  # Database service layer
-│   ├── tools/          # MCP tool implementations
+│   ├── tools/          # Shared content classifiers + the REST-reused store/recent helpers
 │   ├── utils/          # Utility functions
 │   ├── config-toml.ts  # Configuration management
-│   ├── index.ts        # Main server implementation
+│   ├── index-http.ts   # HTTP/REST server (the sole entry point)
 │   └── schema.sql      # Database schema
 ├── docs/
 │   ├── archives/       # Historical documentation
@@ -178,62 +175,44 @@ claude-mem/
 └── tsconfig.json       # TypeScript configuration
 ```
 
-## Configuring as a User-Wide MCP Server
+## Deploying as a shared service
 
-### Lessons Learned: Making claude-mem Available Across All Projects
+claude-mem runs as a single long-lived HTTP service on the host that owns PostgreSQL; every client (across machines) reaches it over Tailscale. There is no per-client server process and no MCP registration.
 
-To make the claude-mem MCP server available across all your Claude Code sessions (not just in the project directory), you need to configure it at the **user scope** rather than project scope.
-
-#### Key Insights
-
-1. **Configuration Location**: Claude Code stores user-wide MCP configurations in `~/.claude.json` (not `~/.config/claude-code/` as some documentation suggests for Linux)
-
-2. **The Right Tool**: Use the `claude mcp add` command with the `--scope user` flag rather than manually editing JSON files
-
-3. **Build First**: Always build the project before adding it as an MCP server, since Claude Code will execute the compiled code from `dist/`
-
-#### Step-by-Step Process
+#### Server side
 
 ```bash
-# 1. Build the project
+# 1. Build
 cd ~/projects/claude-mem
 npm run build
 
-# 2. Add as user-wide MCP server using the CLI
-claude mcp add --transport stdio --scope user claude-mem -- node /home/pball/projects/claude-mem/dist/index.js
-
-# 3. Verify it's connected
-claude mcp list
+# 2. Install/refresh the systemd unit (scripts/claude-mem-http.service)
+#    ExecStart = node dist/index-http.js ; set CLAUDE_MEM_SECRET in the unit env.
+systemctl restart claude-mem-http
+systemctl status claude-mem-http
 ```
 
-#### What This Does
+#### Client side
 
-The `claude mcp add` command:
-- Creates an entry in `~/.claude.json` under the `mcpServers` section
-- Configures the server to use stdio transport (required for local MCP servers)
-- Makes the server available to all Claude Code sessions, regardless of which directory you're working in
-- Validates the configuration and checks server connectivity
+Clients call the REST API directly — the reference clients are the `~/.claude/lib/mem-*.sh` shims, which `curl` the endpoints and send `X-Claude-Mem-Secret`. A minimal round-trip:
 
-#### Verification
-
-After adding, you should see claude-mem in the output of `claude mcp list`:
-```
-claude-mem: node /home/pball/projects/claude-mem/dist/index.js - ✓ Connected
-```
-
-#### After Code Changes
-
-Remember to rebuild whenever you modify the source code:
 ```bash
-cd ~/projects/claude-mem
-npm run build
+curl -s -H "X-Claude-Mem-Secret: $CLAUDE_MEM_SECRET" \
+  -H 'content-type: application/json' \
+  -d '{"query":"how did we fix the body-limit bug","limit":3}' \
+  http://snowball.tailnet:3456/search
 ```
 
-Claude Code will automatically use the updated compiled code in subsequent sessions.
+#### After code changes
+
+Rebuild and restart the service; clients need no changes (they only know the URL + secret):
+```bash
+cd ~/projects/claude-mem && npm run build && systemctl restart claude-mem-http
+```
 
 ## Skills
 
-Claude Code skills enhance development workflows by automating common patterns. This project includes a **memory-augmented-dev** skill that integrates with the MCP memory server.
+Claude Code skills enhance development workflows by automating common patterns. This project includes a **memory-augmented-dev** skill that integrates with the REST memory service.
 
 ### Installing Skills
 

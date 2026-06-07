@@ -2,10 +2,10 @@
   "name": "claude-mem",
   "version": "0.2.0",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/index-http.js",
   "scripts": {
     "build": "node scripts/generate-build-info.cjs && tsc && cp src/schema.sql dist/ && cp src/db/postgres-schema.sql dist/db/ && mkdir -p dist/db/migrations && cp src/db/migrations/*.sql dist/db/migrations/ && cp -r scripts/ dist/ || true",
-    "start": "node dist/index.js",
+    "start": "node dist/index-http.js",
     "start:http": "node dist/index-http.js",
     "clean": "rm -rf dist",
     
@@ -18,9 +18,8 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "Claude Memory - Long-term memory storage system for LLMs using MCP protocol",
+  "description": "Claude Memory - Long-term memory store for LLM sessions (PostgreSQL + pgvector), served over a REST API",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.7.0",
     "@types/pg": "^8.15.4",
     "commander": "^12.0.0",
     "dotenv": "^16.4.7",
