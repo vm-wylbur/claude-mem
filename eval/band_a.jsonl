@@ -1,0 +1,95 @@
+{"id" : "ba-100", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "3af9f50a6a3168f4", "query" : "Union recovery results from multiple tools"}
+{"id" : "ba-101", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "5b91064c1ebb3bc8", "query" : "Unclean unmount warning significance"}
+{"id" : "ba-102", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "bf962a5cac56a1d7", "query" : "Compare redundant copies before repair"}
+{"id" : "ba-103", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "ac5cd98f64ba4e4f", "query" : "FAT corruption propagation awareness"}
+{"id" : "ba-104", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "deea7c261ad1c7e0", "query" : "Work on copies never originals"}
+{"id" : "ba-105", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "d21143567c329220", "query" : "Document recovery with objective metrics"}
+{"id" : "ba-106", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "28cf693145ff7c58", "query" : "Legacy tools prioritize consistency over preservation"}
+{"id" : "ba-107", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "5fda8eb62c4f4639", "query" : "Parallel testing before migration"}
+{"id" : "ba-108", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "e7da6369e3a5e86c", "query" : "rsync does not scale to millions of files"}
+{"id" : "ba-109", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "b699d9b5f4e9b3d0", "query" : "Explicit success criteria for migrations"}
+{"id" : "ba-110", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "f4ea6f69956c42d9", "query" : "Handle full complexity of filesystem change streams"}
+{"id" : "ba-111", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "a0656be59c34eade", "query" : "Homogeneous architecture simplifies operations"}
+{"id" : "ba-114", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "6f32a5e974344ef6", "query" : "Content-addressable storage benefits"}
+{"id" : "ba-115", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "a8d88ea1bc08b0c8", "query" : "File count vs data volume scalability"}
+{"id" : "ba-11", "kind" : "known-item", "band" : "A", "action" : "edited", "target" : "949902d9cc9bd20d", "query" : "Medium type='carved' pattern for extracted archives"}
+{"id" : "ba-12", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "b84226b67cee4fc4", "query" : "Deduplication prediction from backup rotation patterns"}
+{"id" : "ba-13", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "f0045317f52ee56b", "query" : "Carved recovery filesystem limitations: content vs metadata reliability"}
+{"id" : "ba-14", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "5551e9418873d6ca", "query" : "Path-based file access vs directory enumeration resilience pattern"}
+{"id" : "ba-15", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "7f176d091739dcfe", "query" : "Pre-flight filesystem validation for long-running operations"}
+{"id" : "ba-16", "kind" : "known-item", "band" : "A", "action" : "edited", "target" : "3b07f903601125ad", "query" : "Linux USB/SCSI diagnostic correlation for hardware vs filesystem failures"}
+{"id" : "ba-18", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "e87ac5edd4f5c0d0", "query" : "\"Cannot savedir\" error indicates directory metadata corruption, not file content"}
+{"id" : "ba-19", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "b7df869d4dc4a5f8", "query" : "Professional recovery service deliverables don't guarantee filesystem integrity"}
+{"id" : "ba-1", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "2e08cb8f790eb7fe", "query" : "Mechanical Drive Failure Diagnostic Pattern"}
+{"id" : "ba-20", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "89f334d5b95e53e8", "query" : "Hardlink-Heavy Filesystems Require Inode-Based Counting, Not Path Counting"}
+{"id" : "ba-21", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "340739fed08c152b", "query" : "Database Age Creates Verification Blind Spots—25-Day Skew Is Critical"}
+{"id" : "ba-22", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "832d783edafa8e9e", "query" : "Spot-Checking Individual Files Doesn't Validate Systematic Issues"}
+{"id" : "ba-23", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "d0cb84b60ad619f2", "query" : "Shell-Unsafe Path Exclusion Needs Explicit Validation Logic"}
+{"id" : "ba-24", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "f1b52e4b2a0fccfa", "query" : "Zero-Size Files Are Filesystem Metadata—Track Them Separately"}
+{"id" : "ba-25", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "411212a3512645e3", "query" : "Mark Verification Status with Timestamps and Tool Versions in Database Schema"}
+{"id" : "ba-26", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "9665d06cfed9b514", "query" : "ZFS device discovery requires metadata inspection, not guesswork"}
+{"id" : "ba-27", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "775bc52afcc57328", "query" : "Systemd service dependency chains fail silently and cascade unexpectedly"}
+{"id" : "ba-28", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "6bc03ec9354cb2c2", "query" : "RDMA modules cause firmware hangs on commodity network cards - blacklist aggressively"}
+{"id" : "ba-29", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "214611bc970ad5b1", "query" : "ZFS export/import regenerates device discovery and fixes phantom degradation"}
+{"id" : "ba-2", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "9ea1ec62fb98ca09", "query" : "ddrescue Failure Threshold for Abandonment"}
+{"id" : "ba-30", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "a84c0d35aeaa6c01", "query" : "Permission-denied service failures are ownership issues, not configuration problems"}
+{"id" : "ba-32", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "e485a1fa55b75927", "query" : "Boot-time service failures need dmesg correlation, not just systemctl status"}
+{"id" : "ba-33", "kind" : "known-item", "band" : "A", "action" : "edited", "target" : "faaf980ff4e2742e", "query" : "Foreign key partition pruning failure causes 24-60x performance degradation"}
+{"id" : "ba-34", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "ee9fc92c8b837486", "query" : "Missing FK indexes on referencing columns cause 99.99% of FK overhead"}
+{"id" : "ba-35", "kind" : "known-item", "band" : "A", "action" : "edited", "target" : "f8b089a96615b565", "query" : "DETACH/ATTACH with CHECK constraints scopes FK validation to single partition"}
+{"id" : "ba-36", "kind" : "known-item", "band" : "A", "action" : "edited", "target" : "2d57cabf8fe451bd", "query" : "Partition-to-partition FKs restore local index lookups but complicate schema management"}
+{"id" : "ba-37", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "1c2cbd52a88581a7", "query" : "Row-level triggers on bulk operations fire per-row; convert to statement-level with transition tables"}
+{"id" : "ba-39", "kind" : "known-item", "band" : "A", "action" : "edited", "target" : "1941b9f326c1d347", "query" : "Drop/recreate FK on parent table is slower than the original problem"}
+{"id" : "ba-3", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "a819db68d73e26b5", "query" : "Detecting Deliberate Drive Sanitization"}
+{"id" : "ba-40", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "cfe2445251a8aeb7", "query" : "Critical: Session degradation follows compounding error pattern"}
+{"id" : "ba-41", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "a422acbd685f4ea9", "query" : "Anti-pattern: Instruction amnesia across adjacent responses"}
+{"id" : "ba-42", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "ff3bd946d9d26112", "query" : "Critical: Technical misunderstandings compound without self-verification"}
+{"id" : "ba-43", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "3a8a7fc914aaf058", "query" : "Restart threshold: Two 'should we restart?' questions in one session"}
+{"id" : "ba-44", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "135a3713b5af57e5", "query" : "Error amplification: Wrong assumptions cascade into wrong solutions"}
+{"id" : "ba-45", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "8806ac90c487e8ea", "query" : "Anti-pattern: Over-complicating instead of investigating"}
+{"id" : "ba-46", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "b933a6ad709afae0", "query" : "Skill adherence failure: Inconsistent tool usage within session"}
+{"id" : "ba-47", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "53cec4518be34b73", "query" : "Concrete documentation enables undeniable pattern recognition"}
+{"id" : "ba-48", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "84a7a7a1f912002e", "query" : "Direct non-permissive feedback forces investigation over pattern-matching"}
+{"id" : "ba-49", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "36553a8cc37ab156", "query" : "Recovery sequence follows diagnostic pattern: stop shortcuts → investigate → question infrastructure → validate"}
+{"id" : "ba-4", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "4da5645b4a915dbc", "query" : "RAID Recovery on Wiped Drives"}
+{"id" : "ba-50", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "147d3c2e51e61a67", "query" : "Key diagnostic for recovered session: questioning own conclusions rather than defending them"}
+{"id" : "ba-51", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "45af41de6572f171", "query" : "Demanding 'use your skills and tools' bypasses rationalization loops"}
+{"id" : "ba-52", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "1325569e435b5a8d", "query" : "Focus on truth-seeking over hypothesis-validation prevents rationalization"}
+{"id" : "ba-53", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "991ac1ed3f7aeac3", "query" : "Honest documentation of limitations and caveats indicates recovered critical thinking"}
+{"id" : "ba-56", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "5ecda89b2f764e96", "query" : "Atomic commit after fsync for data integrity"}
+{"id" : "ba-58", "kind" : "known-item", "band" : "A", "action" : "edited", "target" : "7d816d21b14b8c15", "query" : "LVM1 format support completely removed from LVM2 in version 2.02.178 (June 2018)"}
+{"id" : "ba-59", "kind" : "known-item", "band" : "A", "action" : "edited", "target" : "ed16fa5c9a8d4995", "query" : "Legacy VM recovery approach for obsolete formats"}
+{"id" : "ba-60", "kind" : "known-item", "band" : "A", "action" : "edited", "target" : "3c7f1e39b052f933", "query" : "LVM1 metadata structure and manual device-mapper reconstruction"}
+{"id" : "ba-61", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "f940e8f2f0a883a7", "query" : "Commercial forensic tools provide zero LVM1 support as of 2025"}
+{"id" : "ba-62", "kind" : "known-item", "band" : "A", "action" : "edited", "target" : "20ee3472dcd720ca", "query" : "Forensic data extraction with integrity verification"}
+{"id" : "ba-63", "kind" : "known-item", "band" : "A", "action" : "edited", "target" : "1a16e6294b57ca15", "query" : "Layered read-only enforcement for forensic soundness"}
+{"id" : "ba-65", "kind" : "known-item", "band" : "A", "action" : "edited", "target" : "fa3240491caadc59", "query" : "PostgreSQL InFailedSqlTransaction handling"}
+{"id" : "ba-66", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "a4bf64ff6c32f40b", "query" : "Distributed state consistency anti-pattern"}
+{"id" : "ba-67", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "70aff908e8baa1d9", "query" : "ON CONFLICT DO UPDATE tradeoff for idempotency"}
+{"id" : "ba-68", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "267ffaeae5fbb016", "query" : "Testing scale reveals distributed state bugs"}
+{"id" : "ba-69", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "f50bdafd7a9a637b", "query" : "Defense-in-depth duplicate detection pattern for Redis+PostgreSQL"}
+{"id" : "ba-6", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "b7135e8dbb0c0dc2", "query" : "Unrecoverable Drive Archival Policy"}
+{"id" : "ba-70", "kind" : "known-item", "band" : "A", "action" : "edited", "target" : "6989e8c67ec8afee", "query" : "Problem framing failure mode with AI assistants"}
+{"id" : "ba-71", "kind" : "known-item", "band" : "A", "action" : "edited", "target" : "9c85096491b4df35", "query" : "PostgreSQL partition drop performance baseline"}
+{"id" : "ba-72", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "4ce643e1ed04529c", "query" : "Migration strategy selection framework"}
+{"id" : "ba-73", "kind" : "known-item", "band" : "A", "action" : "edited", "target" : "d4b63f42b38d94ab", "query" : "Meta-lesson on optimization dead-ends"}
+{"id" : "ba-74", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "810185a8cd4442c8", "query" : "Measurement artifact masquerading as performance problem"}
+{"id" : "ba-75", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "1578561141d11f70", "query" : "Don't use count-based metrics for heavily skewed distributions"}
+{"id" : "ba-76", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "50b28c08383c1bea", "query" : "Performance bottleneck identification through time breakdown"}
+{"id" : "ba-77", "kind" : "known-item", "band" : "A", "action" : "edited", "target" : "12364a56ed0fd5a3", "query" : "Consistent throughput despite variance proves system health"}
+{"id" : "ba-78", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "7d08341b716511a2", "query" : "Debugging intermittent JSON parsing errors in PostgreSQL adapters"}
+{"id" : "ba-79", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "db3011e0ed31bb2e", "query" : "PostgreSQL schema migration gotcha"}
+{"id" : "ba-7", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "4133bbd4a3e38fae", "query" : "Symlink enumeration gotcha for ntt-enum"}
+{"id" : "ba-81", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "5d5c6c988b833519", "query" : "Multi-Claude instance testing revealed race conditions"}
+{"id" : "ba-86", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "10de1e8826f25c06", "query" : "Questions contain hidden assumptions"}
+{"id" : "ba-87", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "b2dc3d08377aeee3", "query" : "Consensus on complexity signals groupthink"}
+{"id" : "ba-89", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "8b989ac0f5e417db", "query" : "Solution hierarchy framework"}
+{"id" : "ba-8", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "e68e1da0ed085a55", "query" : "BLAKE3 signature hashing for physical media identification"}
+{"id" : "ba-91", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "d683a3cce6895519", "query" : "Threading overhead vs per-item work"}
+{"id" : "ba-93", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "c8638052fa371cf5", "query" : "Python 3.14 free-threading overhead"}
+{"id" : "ba-94", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "33042168d64b63a3", "query" : "Parallelization decision framework"}
+{"id" : "ba-95", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "bcf56653e4e3a413", "query" : "Algorithm before parallelization"}
+{"id" : "ba-96", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "77c3482e3b139fb6", "query" : "Parse patterns into categories at startup"}
+{"id" : "ba-98", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "3abf088e31f39180", "query" : "Diagnostic tools have blind spots"}
+{"id" : "ba-99", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "e5f1a2897cc11ad9", "query" : "Syscall differences in directory traversal"}
+{"id" : "ba-9", "kind" : "known-item", "band" : "A", "action" : "approved", "target" : "6a461d9a9c3757a8", "query" : "Schema migration impact on ntt-loader and ntt-copier refactoring"}
