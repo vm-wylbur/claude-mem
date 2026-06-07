@@ -170,13 +170,17 @@ app.post('/docs', async (req: express.Request, res: express.Response): Promise<v
         doc_id: string; filename: string; filepath: string;
         content: string; file_mtime: string; doc_hash: string; metadata: unknown;
     }>;
+    // doc_hash stays in the required set for request back-compat (clients and the
+    // pinned conformance suite still send it), but the value is advisory only —
+    // the service recomputes doc_hash = sha256(content) and ignores what the
+    // client sent (issue #6 / neg-305c49e5). We do not forward b.doc_hash.
     if (!b.doc_id || !b.filename || !b.filepath || !b.content || !b.file_mtime || !b.doc_hash) {
         res.status(400).json({ error: 'doc_id, filename, filepath, content, file_mtime, doc_hash required' });
         return;
     }
     await dbService.upsertLessonsLearnedDoc({
         doc_id: b.doc_id, filename: b.filename, filepath: b.filepath,
-        content: b.content, file_mtime: b.file_mtime, doc_hash: b.doc_hash,
+        content: b.content, file_mtime: b.file_mtime,
         metadata: b.metadata ?? {},
     });
     res.json({ success: true, doc_id: b.doc_id });

@@ -6,6 +6,7 @@
 // mcp-long-term-memory-pg/src/db/service-new.ts
 
 import { z } from 'zod';
+import { sha256Hex } from '../utils/hash.js';
 import {
   DatabaseAdapter,
   DatabaseConnectionInfo,
@@ -362,7 +363,12 @@ export class DatabaseService {
     }
 
     /**
-     * Upsert (insert or update) a lessons-learned document
+     * Upsert (insert or update) a lessons-learned document.
+     *
+     * doc_hash is derived here from content (sha256), NOT taken from the caller
+     * (issue #6 / neg-305c49e5). The service holds the content, so it is the
+     * authoritative source of the hash — a stale/buggy client cannot write a
+     * doc_hash that disagrees with sha256(content) and poison dedup lineage.
      */
     async upsertLessonsLearnedDoc(doc: {
         doc_id: string;
@@ -370,13 +376,14 @@ export class DatabaseService {
         filepath: string;
         content: string;
         file_mtime: string;
-        doc_hash: string;
         metadata: any;
     }): Promise<void> {
         const adapter = this.adapter as any;
         if (!adapter.pool) {
             throw new Error('PostgreSQL adapter not connected');
         }
+
+        const doc_hash = sha256Hex(doc.content);
 
         const client = await adapter.pool.connect();
         try {
@@ -388,7 +395,7 @@ export class DatabaseService {
                    file_mtime = EXCLUDED.file_mtime,
                    doc_hash = EXCLUDED.doc_hash,
                    metadata = EXCLUDED.metadata`,
-                [doc.doc_id, doc.filename, doc.filepath, doc.content, doc.file_mtime, doc.doc_hash, JSON.stringify(doc.metadata)]
+                [doc.doc_id, doc.filename, doc.filepath, doc.content, doc.file_mtime, doc_hash, JSON.stringify(doc.metadata)]
             );
         } finally {
             client.release();

@@ -6,6 +6,20 @@
 // Hash utilities for memory ID generation using xxHash64
 
 import xxhash from 'xxhash-wasm';
+import { createHash } from 'node:crypto';
+
+/**
+ * SHA-256 hex digest of a UTF-8 string.
+ *
+ * This is the canonical doc_hash / doc_id derivation for the harvester corpus
+ * (ratified in neg-305c49e5: sha256, NOT blake3, despite the legacy naming the
+ * old sync tool carried). The server derives doc_hash this way on POST /docs
+ * (issue #6) so a stale/buggy client cannot poison dedup lineage. The harvester
+ * marker MUST hash the same input bytes (the raw doc content) to stay in lockstep.
+ */
+export function sha256Hex(input: string): string {
+  return createHash('sha256').update(input).digest('hex');
+}
 
 /**
  * xxHash64-based memory ID utilities
