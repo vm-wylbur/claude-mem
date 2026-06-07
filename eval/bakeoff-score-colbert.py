@@ -41,6 +41,7 @@ def main() -> int:
     ap.add_argument("--orders", default="/tmp/bakeoff-orders.json", help="bge orders (A0/A1) to merge")
     ap.add_argument("--out", default="/tmp/bakeoff-orders-abc.json")
     ap.add_argument("--doc-len", type=int, default=512)
+    ap.add_argument("--batch", type=int, default=32, help="encode batch size; lower for long docs (MPS 4GB/tensor cap)")
     ap.add_argument("--limit", type=int, default=0)
     a = ap.parse_args()
 
@@ -65,8 +66,15 @@ def main() -> int:
         return m / np.clip(n, 1e-9, None)  # L2-normalize -> dot == cosine
 
     def encode_batch(texts, is_query):
-        embs = model.encode(list(texts), is_query=is_query, show_progress_bar=False)
-        return [_norm(e) for e in embs]  # list of [tokens, dim] matrices
+        # length-sorted so a long doc doesn't pad a whole batch up to its length
+        # (and a small --batch keeps the MPS attention tensor under the 4GB cap).
+        idx = sorted(range(len(texts)), key=lambda i: len(texts[i]))
+        embs_sorted = model.encode([texts[i] for i in idx], is_query=is_query,
+                                   batch_size=a.batch, show_progress_bar=False)
+        out = [None] * len(texts)
+        for pos, i in enumerate(idx):
+            out[i] = _norm(embs_sorted[pos])
+        return out  # list of [tokens, dim] matrices, original order
 
     def maxsim(qm, dm):
         return float((qm @ dm.T).max(axis=1).sum())
