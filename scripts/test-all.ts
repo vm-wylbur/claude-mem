@@ -36,6 +36,12 @@ class TestRunner {
       required: false
     },
     {
+      name: 'Rerank Slot Tests',
+      script: './scripts/test-rerank.ts',
+      description: 'Unit tests for the bge rerank reorder/degrade/config logic (no DB, fetch stubbed)',
+      required: false
+    },
+    {
       name: 'PostgreSQL Tests',
       script: './scripts/test-postgres.ts', 
       description: 'Test PostgreSQL connectivity and operations',

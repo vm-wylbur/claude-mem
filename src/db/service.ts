@@ -16,6 +16,8 @@ import {
   QueueFixInput,
 } from './adapters/base.js';
 
+import { rerankConfigFromEnv, rerankByBge, type RerankConfig } from './rerank.js';
+
 export type { QueueFix, QueueFixFilter, QueueFixInput, QueueFixConsumedOutcome } from './adapters/base.js';
 
 // Re-export types from base for backwards compatibility
@@ -75,10 +77,15 @@ export class DatabaseService {
     // Read once at construction: toggling requires a service restart (no
     // code redeploy), since the server builds one DatabaseService at startup.
     private readonly useHybridSearch: boolean;
+    // bge rerank slot (Phase-A A6). Resolved once at construction; null = off
+    // (flag unset, or set but no bearer -> degrade to hybrid). Only meaningful
+    // when hybrid is on, since rerank reorders the hybrid pool.
+    private readonly rerankConfig: RerankConfig | null;
 
     constructor(adapter: DatabaseAdapter) {
         this.adapter = adapter;
         this.useHybridSearch = /^(1|true|yes|on)$/i.test(process.env.MCPMEM_HYBRID_SEARCH ?? '');
+        this.rerankConfig = this.useHybridSearch ? rerankConfigFromEnv() : null;
     }
 
     /**
@@ -168,6 +175,22 @@ export class DatabaseService {
         }
 
         if (this.useHybridSearch) {
+            if (this.rerankConfig) {
+                // Rerank reorders a wider pool, then we slice top-k. The pool is
+                // fetched WITH content (search_hybrid returns it) since bge scores
+                // query-against-content.
+                const poolSize = Math.max(this.rerankConfig.pool, limit);
+                const pool = await this.adapter.findSimilarMemoriesHybrid(content, poolSize, this.devProjectId);
+                try {
+                    const reranked = await rerankByBge(content, pool, this.rerankConfig);
+                    return reranked.slice(0, limit);
+                } catch (err) {
+                    // Degrade to hybrid: the pool is already in hybrid score order,
+                    // so its top-`limit` is exactly the non-rerank hybrid result.
+                    console.error('rerank failed; using hybrid order:', err instanceof Error ? err.message : err);
+                    return pool.slice(0, limit);
+                }
+            }
             return this.adapter.findSimilarMemoriesHybrid(content, limit, this.devProjectId);
         }
         return this.adapter.findSimilarMemories(content, limit, this.devProjectId);
