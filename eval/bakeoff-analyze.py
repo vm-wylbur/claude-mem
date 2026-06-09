@@ -13,14 +13,23 @@
 # the per-query ordered id lists from bakeoff-score.py and reports, per arm:
 # recall@{1,5,10} + MRR, overall and stratified by band (A / golden) and kind
 # (exact-id / id-topic / conceptual / known-item). Then the decision rows:
-# the paired deltas A1-A0, A2-A0, A2-A1 with 95% paired-bootstrap CIs (all arms
-# score the SAME queries, so the comparison is paired -- resample queries, not
-# arms). Reports the pool-containment ceiling: every arm's recall is capped by
-# whether the target is in the pool at all, so a low score can be a candidate-
-# gen miss rather than a rerank miss.
+# the paired deltas with 95% paired-bootstrap CIs (all arms score the SAME
+# queries, so the comparison is paired -- resample queries, not arms). Reports
+# the pool-containment ceiling: every arm's recall is capped by whether the
+# target is in the pool at all, so a low score can be a candidate-gen miss
+# rather than a rerank miss.
+#
+# Fused-guard arms (synthesized here from A0 + the reranker arm, no extra
+# compute): A1f = bge fused with hybrid, A2f = colbert fused with hybrid, via
+# weighted RRF (default 3:1 k=60 -- the live production guard, see
+# rerank-fuse-offline.py / [[search-upgrade]]). A1/A2 score the reranker ALONE;
+# A1f/A2f score what the production slot would actually serve. The A1f-A1 /
+# A2f-A2 deltas answer "does fusing hybrid back in help or hurt vs the reranker
+# alone?" -- the production slot-config question the bare bake-off didn't ask.
 #
 # Usage:
-#   uv run eval/bakeoff-analyze.py /tmp/bakeoff-orders.json [--boot 2000]
+#   uv run eval/bakeoff-analyze.py /tmp/bakeoff-orders.json \
+#       [--boot 2000] [--k 60] [--wr 3] [--wh 1]
 
 import argparse
 import json
@@ -38,6 +47,22 @@ def rank_of(target, ids):
         if m == target:
             return i
     return None
+
+
+def order_rrf(ids_hy, ids_rr, k, wr, wh):
+    """Weighted Reciprocal Rank Fusion of hybrid order + reranker order:
+    score(m) = wr/(k+rank_rerank) + wh/(k+rank_hybrid). Tie-break on hybrid
+    rank for determinism. Matches rerank-fuse-offline.order_rrf (the production
+    guard). Absent ids get a sentinel rank past the pool so they sink."""
+    rh = {m: i for i, m in enumerate(ids_hy, 1)}
+    rr = {m: i for i, m in enumerate(ids_rr, 1)}
+    ids = set(rh) | set(rr)
+    big = len(ids) + k
+
+    def sc(m):
+        return wr / (k + rr.get(m, big)) + wh / (k + rh.get(m, big))
+
+    return sorted(ids, key=lambda m: (-sc(m), rh.get(m, big)))
 
 
 def per_query(orders, arm):
@@ -96,15 +121,29 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("orders")
     ap.add_argument("--boot", type=int, default=2000)
+    ap.add_argument("--k", type=int, default=60, help="RRF k for the fused guard arms")
+    ap.add_argument("--wr", type=float, default=3.0, help="fused-arm weight on the reranker leg")
+    ap.add_argument("--wh", type=float, default=1.0, help="fused-arm weight on the hybrid leg")
     a = ap.parse_args()
 
     data = json.loads(Path(a.orders).read_text())
     orders = data["orders"]
-    present = [arm for arm in ("A0", "A1", "A2") if per_query(orders, arm) is not None]
+
+    # Synthesize the production-guard fused arms from the orders already on disk
+    # (no model/snowball): A1f = bge+hybrid, A2f = colbert+hybrid, weighted RRF.
+    for o in orders:
+        if "ids_A0" in o and "ids_A1" in o:
+            o["ids_A1f"] = order_rrf(o["ids_A0"], o["ids_A1"], a.k, a.wr, a.wh)
+        if "ids_A0" in o and "ids_A2" in o:
+            o["ids_A2f"] = order_rrf(o["ids_A0"], o["ids_A2"], a.k, a.wr, a.wh)
+
+    present = [arm for arm in ("A0", "A1", "A1f", "A2", "A2f") if per_query(orders, arm) is not None]
     pq = {arm: per_query(orders, arm) for arm in present}
 
-    label = {"A0": "A0 hybrid", "A1": "A1 bge", "A2": "A2 colbert"}
-    print(f"\n  bake-off: arms={[label[a] for a in present]}  n={len(orders)}  pool={data.get('pool')}  boot={a.boot}")
+    label = {"A0": "A0 hybrid", "A1": "A1 bge", "A1f": "A1f bge+hyb",
+             "A2": "A2 colbert", "A2f": "A2f cbrt+hyb"}
+    print(f"\n  bake-off: arms={[label[a] for a in present]}  n={len(orders)}  "
+          f"pool={data.get('pool')}  boot={a.boot}  guard=RRF {a.wr:g}:{a.wh:g} k={a.k}")
 
     # pool-containment ceiling (cap on every arm's recall)
     cont = sum(o.get("target_in_pool", True) for o in orders)
@@ -118,7 +157,9 @@ def main() -> int:
         strat_table(f"kind={kind}", present, pq, (lambda k: lambda o: o["kind"] == k)(kind))
 
     # decision rows: paired deltas with bootstrap CIs
-    pairs = [(x, y) for x, y in (("A1", "A0"), ("A2", "A0"), ("A2", "A1")) if x in pq and y in pq]
+    deltas = (("A1", "A0"), ("A2", "A0"), ("A2", "A1"),
+              ("A1f", "A1"), ("A1f", "A0"), ("A2f", "A2"), ("A1f", "A2f"))
+    pairs = [(x, y) for x, y in deltas if x in pq and y in pq]
     if pairs:
         print(f"\n  === paired deltas (Δ = later - earlier; 95% paired-bootstrap CI over {len(orders)} queries) ===")
         print(f"  {'delta':<10} {'metric':<6} {'Δ':>8}  {'95% CI':>18}  sig")
