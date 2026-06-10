@@ -165,6 +165,24 @@ export class DatabaseService {
     }
 
     /**
+     * Liveness-AGNOSTIC row count for the dev project (startup seed guard).
+     * Deliberately counts tombstoned rows: "has this DB ever been seeded" is
+     * an existence question — the W3 read filter must not make an all-evicted
+     * project look like a fresh DB and re-trigger seeding (the seed upsert
+     * would land invisibly on the tombstoned rows, re-firing every restart).
+     */
+    async countDevMemoriesIncludingEvicted(): Promise<number> {
+        if (!this.devProjectId) {
+            throw new Error('DatabaseService not initialized. Call initialize() first.');
+        }
+        const result = await this.pgPool().query(
+            'SELECT count(*)::int AS n FROM memories WHERE project_id = $1',
+            [this.devProjectId]
+        );
+        return result.rows[0].n;
+    }
+
+    /**
      * Get memories for the development project with optional pagination
      */
     async getDevMemories(limit?: number): Promise<Memory[]> {
@@ -687,6 +705,10 @@ export class DatabaseService {
         const queryVector = await generateEmbedding(ev.query_text);
         // Pre-eviction by design: search_hybrid_candidates() carries no
         // evicted_at filter, so an eviction-caused miss stays visible.
+        // W3 corollary: the SERVING legs are eviction-filtered (004), so once
+        // enough evicted rows outrank a live row per leg, a returned id can
+        // fall outside this capture pool — offline joins must tolerate
+        // returned_ids absent from search_candidates.
         await pool.query(
             `INSERT INTO search_candidates
                (search_id, memory_id, fts_rank, vec_rank, trgm_rank, rrf, final_rank, returned)
