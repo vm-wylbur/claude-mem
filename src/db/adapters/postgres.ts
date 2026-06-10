@@ -363,9 +363,11 @@ export class PostgresAdapter implements DatabaseAdapter {
 
     const client = await this.pool.connect();
     try {
+      // W3 sweep: tombstoned memories are invisible to every serving read
+      // path; recovery goes through getMemory/GET /memory/:memory_id only.
       let query = `
-        SELECT * FROM memories 
-        WHERE project_id = $1 
+        SELECT * FROM memories
+        WHERE project_id = $1 AND evicted_at IS NULL
         ORDER BY created_at DESC
       `;
       
@@ -398,8 +400,8 @@ export class PostgresAdapter implements DatabaseAdapter {
       // Generate embedding for search query
       const queryVector = await generateEmbedding(content);
       
-      // Use pgvector cosine distance for similarity search
-      let whereClause = 'WHERE embedding IS NOT NULL';
+      // Use pgvector cosine distance for similarity search (W3: live rows only)
+      let whereClause = 'WHERE embedding IS NOT NULL AND evicted_at IS NULL';
       let params: any[] = [JSON.stringify(queryVector), limit];
       
       if (projectId) {
@@ -458,7 +460,8 @@ export class PostgresAdapter implements DatabaseAdapter {
     const client = await this.pool.connect();
     try {
       // Use PostgreSQL JSONB operators for rich metadata queries
-      const conditions = [];
+      // W3 sweep: serving read path, live rows only.
+      const conditions = ['evicted_at IS NULL'];
       const params = [];
       let paramIndex = 1;
 
@@ -674,10 +677,11 @@ export class PostgresAdapter implements DatabaseAdapter {
       let params: any[] = [];
 
       if (projectId) {
+        // W3 sweep: don't surface tags that survive only on tombstoned memories.
         query += `
           JOIN memory_tags mt ON t.tag_id = mt.tag_id
           JOIN memories m ON mt.memory_id = m.memory_id
-          WHERE m.project_id = $1
+          WHERE m.project_id = $1 AND m.evicted_at IS NULL
         `;
         params.push(projectId);
       }
@@ -696,12 +700,13 @@ export class PostgresAdapter implements DatabaseAdapter {
 
     const client = await this.pool.connect();
     try {
+      // W3 sweep: serving read path, live rows only.
       let query = `
         SELECT DISTINCT m.*, 1 - (m.embedding::vector <=> m.embedding::vector) AS similarity
         FROM memories m
         JOIN memory_tags mt ON m.memory_id = mt.memory_id
         JOIN tags t ON mt.tag_id = t.tag_id
-        WHERE t.name = $1
+        WHERE t.name = $1 AND m.evicted_at IS NULL
       `;
       let params: any[] = [tagName];
 

@@ -42,12 +42,15 @@ const adapter = await createDatabaseAdapterToml();
 const dbService = new DatabaseService(adapter);
 await dbService.initialize();
 
-const existingMemories = await dbService.getDevMemories();
-if (existingMemories.length === 0) {
+// Seed guard is liveness-agnostic (counts tombstoned rows): an all-evicted
+// dev project is NOT a fresh DB, and re-seeding would land invisibly on the
+// tombstoned rows and re-fire every restart.
+const existingCount = await dbService.countDevMemoriesIncludingEvicted();
+if (existingCount === 0) {
     console.error('Storing initial development progress...');
     await storeInitialProgress(dbService);
 } else {
-    console.error(`Found ${existingMemories.length} existing memories`);
+    console.error(`Found ${existingCount} existing memories`);
 }
 
 async function storeMemoryWithTags(
