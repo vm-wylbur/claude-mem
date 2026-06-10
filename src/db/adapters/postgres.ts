@@ -18,7 +18,7 @@ import {
   QueueFixFilter,
   QueueFixInput,
 } from './base.js';
-import { MemoryType, MemoryMetadata, Memory } from '../service.js';
+import { MemoryType, MemoryMetadata, MemoryProvenance, Memory } from '../service.js';
 import { generateEmbedding, generateEmbeddingWithFallback } from '../../embeddings.js';
 import { generateMemoryHash, generateTagHash, initializeHasher } from '../../utils/hash.js';
 
@@ -222,7 +222,8 @@ export class PostgresAdapter implements DatabaseAdapter {
     metadata: MemoryMetadata,
     projectId: string,
     sourceKey?: string,
-    sourceDocId?: string
+    sourceDocId?: string,
+    provenance?: MemoryProvenance
   ): Promise<string> {
     if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
 
@@ -236,6 +237,14 @@ export class PostgresAdapter implements DatabaseAdapter {
       const embedding = vector ? JSON.stringify(vector) : null; // JSONB array for pgvector, or null
       const metadataJson = JSON.stringify(metadata);
       const docId = sourceDocId ?? null; // provenance link to lessons_learned_docs(doc_id)
+      // Typed provenance columns (migration 002). Conflict policy differs by
+      // branch: keyed upsert = the new write is an edit, so provided fields
+      // overwrite (omitted fields keep the existing value); unkeyed dedup =
+      // identical content, the original author keeps attribution, so existing
+      // values win and the new write only fills NULLs (backfill-friendly).
+      const sessionId = provenance?.session_id ?? null;
+      const host = provenance?.host ?? null;
+      const agentId = provenance?.agent_id ?? null;
 
       let result;
       if (sourceKey) {
@@ -246,28 +255,34 @@ export class PostgresAdapter implements DatabaseAdapter {
         // PK on source_key also avoids colliding with content-hash ids.
         const memoryId = generateMemoryHash(sourceKey, 'source-key');
         result = await client.query(`
-          INSERT INTO memories (memory_id, project_id, content, content_type, metadata, embedding, source_key, source_doc_id)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          INSERT INTO memories (memory_id, project_id, content, content_type, metadata, embedding, source_key, source_doc_id, session_id, host, agent_id)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
           ON CONFLICT (source_key) WHERE source_key IS NOT NULL DO UPDATE SET
             content = EXCLUDED.content,
             content_type = EXCLUDED.content_type,
             metadata = EXCLUDED.metadata,
             embedding = EXCLUDED.embedding,
             source_doc_id = COALESCE(EXCLUDED.source_doc_id, memories.source_doc_id),
+            session_id = COALESCE(EXCLUDED.session_id, memories.session_id),
+            host = COALESCE(EXCLUDED.host, memories.host),
+            agent_id = COALESCE(EXCLUDED.agent_id, memories.agent_id),
             updated_at = CURRENT_TIMESTAMP
           RETURNING memory_id
-        `, [memoryId, projectId, content, type, metadataJson, embedding, sourceKey, docId]);
+        `, [memoryId, projectId, content, type, metadataJson, embedding, sourceKey, docId, sessionId, host, agentId]);
       } else {
         // Unkeyed: original content-hash dedup behavior, unchanged.
         const memoryId = generateMemoryHash(content, type);
         result = await client.query(`
-          INSERT INTO memories (memory_id, project_id, content, content_type, metadata, embedding, source_doc_id)
-          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          INSERT INTO memories (memory_id, project_id, content, content_type, metadata, embedding, source_doc_id, session_id, host, agent_id)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
           ON CONFLICT (memory_id) DO UPDATE SET
             source_doc_id = COALESCE(EXCLUDED.source_doc_id, memories.source_doc_id),
+            session_id = COALESCE(memories.session_id, EXCLUDED.session_id),
+            host = COALESCE(memories.host, EXCLUDED.host),
+            agent_id = COALESCE(memories.agent_id, EXCLUDED.agent_id),
             updated_at = CURRENT_TIMESTAMP
           RETURNING memory_id
-        `, [memoryId, projectId, content, type, metadataJson, embedding, docId]);
+        `, [memoryId, projectId, content, type, metadataJson, embedding, docId, sessionId, host, agentId]);
       }
 
       await client.query('COMMIT');

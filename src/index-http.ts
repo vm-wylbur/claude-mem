@@ -18,7 +18,7 @@ claude-mem/src/index-http.ts
 
 import { config } from 'dotenv';
 import express from 'express';
-import { DatabaseService, QueueFixInput, QueueFixFilter, QueueFixConsumedOutcome, MemoryType, MemoryMetadata } from './db/service.js';
+import { DatabaseService, QueueFixInput, QueueFixFilter, QueueFixConsumedOutcome, MemoryType, MemoryMetadata, MemoryProvenance } from './db/service.js';
 import { createDatabaseAdapterToml } from './config.js';
 import { getConfigSummaryToml } from './config-toml.js';
 import { storeInitialProgress, storeDevProgress } from './dev-memory.js';
@@ -54,9 +54,10 @@ async function storeMemoryWithTags(
     type: import('./db/service.js').MemoryType,
     metadata: Record<string, unknown>,
     tags?: string[],
-    sourceKey?: string
+    sourceKey?: string,
+    provenance?: MemoryProvenance
 ): Promise<string> {
-    const memoryId = await storeDevProgress(dbService, content, type, metadata, sourceKey);
+    const memoryId = await storeDevProgress(dbService, content, type, metadata, sourceKey, undefined, provenance);
     if (tags && tags.length > 0) {
         await dbService.addMemoryTags(memoryId, tags);
     }
@@ -88,10 +89,25 @@ app.post('/store', async (req: express.Request, res: express.Response): Promise<
         res.status(400).json({ error: 'content (string) required' });
         return;
     }
+    // Provenance-on-write (Phase-A centerpiece). null/undefined = absent
+    // (back-compat: jq emits null for unset env vars); any other non-string
+    // OR empty string is a client bug — reject rather than silently dropping
+    // the episode link.
+    const provenance: MemoryProvenance = {};
+    for (const name of ['session_id', 'host', 'agent_id'] as const) {
+        const value = (req.body as Record<string, unknown>)[name];
+        if (value === undefined || value === null) continue;
+        if (typeof value !== 'string' || value.length === 0) {
+            res.status(400).json({ error: `${name} must be a non-empty string when provided` });
+            return;
+        }
+        provenance[name] = value;
+    }
     const result = await restQuickStore.handle({
         content,
         tags: Array.isArray(tags) ? tags : undefined,
-        source_key: typeof source_key === 'string' && source_key.length > 0 ? source_key : undefined
+        source_key: typeof source_key === 'string' && source_key.length > 0 ? source_key : undefined,
+        provenance: Object.keys(provenance).length > 0 ? provenance : undefined
     });
     const storeBlock = result.content[0] as { type: 'text'; text: string };
     res.json(JSON.parse(storeBlock.text));

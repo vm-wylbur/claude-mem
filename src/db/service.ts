@@ -24,6 +24,18 @@ export type { QueueFix, QueueFixFilter, QueueFixInput, QueueFixConsumedOutcome }
 export const MemoryType = z.enum(['conversation', 'code', 'decision', 'reference']);
 export type MemoryType = z.infer<typeof MemoryType>;
 
+// Client-supplied write provenance (Phase-A centerpiece, neg-2baa74e7).
+// Typed columns on memories, kept SEPARATE from the server-generated
+// metadata jsonb. All fields optional: absence is the back-compat path.
+// episode_id and valid_at/invalid_at are deliberately NOT here (derived
+// substrate grouping / Phase-B greenfield, per the task-split spec).
+export const MemoryProvenance = z.object({
+    session_id: z.string().min(1).optional(),
+    host: z.string().min(1).optional(),
+    agent_id: z.string().min(1).optional()
+});
+export type MemoryProvenance = z.infer<typeof MemoryProvenance>;
+
 export const MemoryMetadata = z.object({
     key_decisions: z.array(z.string()).optional(),
     implementation_status: z.string().optional(),
@@ -117,13 +129,14 @@ export class DatabaseService {
         type: MemoryType,
         metadata: MemoryMetadata,
         sourceKey?: string,
-        sourceDocId?: string
+        sourceDocId?: string,
+        provenance?: MemoryProvenance
     ): Promise<string> {
         if (!this.devProjectId) {
             throw new Error('DatabaseService not initialized. Call initialize() first.');
         }
 
-        return this.adapter.storeMemory(content, type, metadata, this.devProjectId, sourceKey, sourceDocId);
+        return this.adapter.storeMemory(content, type, metadata, this.devProjectId, sourceKey, sourceDocId, provenance);
     }
 
     /**
@@ -135,9 +148,10 @@ export class DatabaseService {
         metadata: MemoryMetadata,
         projectId: string,
         sourceKey?: string,
-        sourceDocId?: string
+        sourceDocId?: string,
+        provenance?: MemoryProvenance
     ): Promise<string> {
-        return this.adapter.storeMemory(content, type, metadata, projectId, sourceKey, sourceDocId);
+        return this.adapter.storeMemory(content, type, metadata, projectId, sourceKey, sourceDocId, provenance);
     }
 
     /**
