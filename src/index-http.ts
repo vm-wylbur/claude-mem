@@ -16,6 +16,7 @@ claude-mem/src/index-http.ts
 // when the server has CLAUDE_MEM_SECRET set (belt-and-suspenders over the
 // Tailscale network boundary).
 
+import { randomUUID } from 'node:crypto';
 import { config } from 'dotenv';
 import express from 'express';
 import { DatabaseService, QueueFixInput, QueueFixFilter, QueueFixConsumedOutcome, MemoryType, MemoryMetadata, MemoryProvenance } from './db/service.js';
@@ -82,6 +83,17 @@ app.use((req, res, next) => {
     next();
 });
 
+// Shared optional-field stance (/store provenance, /search session_id,
+// /search-verdict outcome): null/undefined = absent (back-compat: jq emits
+// null for unset env vars); ''/non-string = a client bug — reject rather
+// than silently dropping the field. Returns the string, undefined for
+// absent, or null meaning INVALID (caller 400s).
+function optionalString(v: unknown): string | undefined | null {
+    if (v === undefined || v === null) return undefined;
+    if (typeof v !== 'string' || v.length === 0) return null;
+    return v;
+}
+
 // REST endpoints — the load-bearing client surface (hook scripts + lib shims).
 app.post('/store', async (req: express.Request, res: express.Response): Promise<void> => {
     const { content, tags, source_key } = req.body as { content?: unknown; tags?: unknown; source_key?: unknown };
@@ -89,18 +101,15 @@ app.post('/store', async (req: express.Request, res: express.Response): Promise<
         res.status(400).json({ error: 'content (string) required' });
         return;
     }
-    // Provenance-on-write (Phase-A centerpiece). null/undefined = absent
-    // (back-compat: jq emits null for unset env vars); any other non-string
-    // OR empty string is a client bug — reject rather than silently dropping
-    // the episode link.
+    // Provenance-on-write (Phase-A centerpiece).
     const provenance: MemoryProvenance = {};
     for (const name of ['session_id', 'host', 'agent_id'] as const) {
-        const value = (req.body as Record<string, unknown>)[name];
-        if (value === undefined || value === null) continue;
-        if (typeof value !== 'string' || value.length === 0) {
+        const value = optionalString((req.body as Record<string, unknown>)[name]);
+        if (value === null) {
             res.status(400).json({ error: `${name} must be a non-empty string when provided` });
             return;
         }
+        if (value === undefined) continue;
         provenance[name] = value;
     }
     const result = await restQuickStore.handle({
@@ -136,14 +145,81 @@ app.get('/recent', async (req: express.Request, res: express.Response): Promise<
 // Semantic search + IaC drift queue (mem-search + queue-fix-*).
 
 app.post('/search', async (req: express.Request, res: express.Response): Promise<void> => {
-    const { query, limit } = req.body as { query?: unknown; limit?: unknown };
+    const { query, limit, session_id } = req.body as { query?: unknown; limit?: unknown; session_id?: unknown };
     if (!query || typeof query !== 'string') {
         res.status(400).json({ error: 'query (string) required' });
         return;
     }
+    // Optional episode handle (typed onto search_events.session_id).
+    const sessionId = optionalString(session_id);
+    if (sessionId === null) {
+        res.status(400).json({ error: 'session_id must be a non-empty string when provided' });
+        return;
+    }
     const n = typeof limit === 'number' && limit > 0 ? Math.min(limit, 50) : 5;
+    // search_id is unconditional (telemetry on or off): it is the correlation
+    // handle the client echoes into POST /search-verdict.
+    const searchId = randomUUID();
     const memories = await dbService.findSimilarMemories(query, n);
-    res.json({ memories });
+    res.json({ search_id: searchId, memories });
+    // Capture-write: async fire-and-forget AFTER the response -- zero added
+    // latency on the hot path; a capture failure is logged, never surfaced.
+    void dbService.captureSearchEvent({
+        search_id: searchId,
+        query_text: query,
+        session_id: sessionId,
+        match_count: memories.length,
+        returned_ids: memories.map(m => m.memory_id),
+    }).catch(err => {
+        console.error('search telemetry capture failed:', err instanceof Error ? err.message : err);
+    });
+});
+
+// POST /search-verdict — the reader's sufficiency verdict for one /search
+// call (one loop iteration; loop_id groups, loop_iteration orders). outcome
+// is the loop's terminal label, sent ONCE on the final iteration. verdict/
+// outcome enums are validated by the orchestrator verb-side; the engine
+// stores TEXT.
+app.post('/search-verdict', async (req: express.Request, res: express.Response): Promise<void> => {
+    // ?? {}: express 5 leaves req.body undefined on a non-JSON content-type;
+    // that's a malformed request (400), not a server fault (500).
+    const b = (req.body ?? {}) as { search_id?: unknown; verdict?: unknown; iteration?: unknown; loop_id?: unknown; outcome?: unknown };
+    if (typeof b.search_id !== 'string' || b.search_id.length === 0
+        || typeof b.verdict !== 'string' || b.verdict.length === 0
+        || typeof b.loop_id !== 'string' || b.loop_id.length === 0
+        || typeof b.iteration !== 'number' || !Number.isInteger(b.iteration)
+        || b.iteration < 1 || b.iteration > 2147483647) {  // loop_iteration is INT4
+        res.status(400).json({
+            error: 'search_id, verdict, loop_id (non-empty strings) and iteration (integer >= 1) required'
+        });
+        return;
+    }
+    const outcome = optionalString(b.outcome);
+    if (outcome === null) {
+        res.status(400).json({ error: 'outcome must be a non-empty string when provided' });
+        return;
+    }
+    await dbService.recordSearchVerdict({
+        search_id: b.search_id,
+        verdict: b.verdict,
+        iteration: b.iteration,
+        loop_id: b.loop_id,
+        outcome,
+    });
+    res.json({ success: true });
+});
+
+// GET /memory/:memory_id — full provenance + tombstone view, deliberately
+// NOT evicted-filtered: this is the recovery/inspection surface (a wrongly
+// forgotten memory must stay visible here), and the assertion target for
+// the harvest-conformance provenance checks.
+app.get('/memory/:memory_id', async (req: express.Request, res: express.Response): Promise<void> => {
+    const memory = await dbService.getMemoryFull(req.params['memory_id']);
+    if (!memory) {
+        res.status(404).json({ error: 'memory not found' });
+        return;
+    }
+    res.json({ memory });
 });
 
 // ── Doc harvester: lessons_learned_docs + memories.source_doc_id + extraction_decisions.

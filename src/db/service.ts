@@ -7,6 +7,7 @@
 
 import { z } from 'zod';
 import { sha256Hex } from '../utils/hash.js';
+import { generateEmbedding } from '../embeddings.js';
 import {
   DatabaseAdapter,
   DatabaseConnectionInfo,
@@ -93,11 +94,20 @@ export class DatabaseService {
     // (flag unset, or set but no bearer -> degrade to hybrid). Only meaningful
     // when hybrid is on, since rerank reorders the hybrid pool.
     private readonly rerankConfig: RerankConfig | null;
+    // Miss-telemetry capture (Workstreams A+B, neg-6b0a3bf5). Off by default
+    // per the deploy convention: shipping the code changes nothing until
+    // MCPMEM_TELEMETRY is set. Requires hybrid serving — the capture records
+    // the hybrid candidate pool, which would misattribute the results if the
+    // pure-vector path served the query. Gates ONLY the /search capture-write;
+    // the /search-verdict write path is always live.
+    private readonly telemetryEnabled: boolean;
 
     constructor(adapter: DatabaseAdapter) {
         this.adapter = adapter;
         this.useHybridSearch = /^(1|true|yes|on)$/i.test(process.env.MCPMEM_HYBRID_SEARCH ?? '');
         this.rerankConfig = this.useHybridSearch ? rerankConfigFromEnv() : null;
+        this.telemetryEnabled = this.useHybridSearch
+            && /^(1|true|yes|on)$/i.test(process.env.MCPMEM_TELEMETRY ?? '');
     }
 
     /**
@@ -603,5 +613,143 @@ export class DatabaseService {
     /** Mark a queue_fix entry superseded by a later entry. */
     async markQueueFixSuperseded(id: number, supersededBy: number): Promise<void> {
         return this.adapter.markQueueFixSuperseded(id, supersededBy);
+    }
+
+    //
+    // Miss-telemetry + read-loop instrumentation (Workstreams A+B, neg-6b0a3bf5)
+    //
+    // Both writers UPSERT on search_id: the capture-write is async
+    // fire-and-forget after the /search response, so a fast client's verdict
+    // can legitimately land FIRST. Whichever writes first creates the row;
+    // each writer touches only its own columns, so the race composes instead
+    // of clobbering.
+    //
+
+    // Capture rrf_k/pool: search_hybrid_candidates() defaults. pool=100 is
+    // WIDER than prod search_hybrid()'s 50: per-LEG ranks are unaffected, but
+    // fused rrf/final_rank CAN diverge from the served order for items outside
+    // prod's per-leg top-50 (they gain RRF contributions here). The `returned`
+    // flag is the source of truth for what prod served (PR #9 caveat).
+    private static readonly CAPTURE_RRF_K = 60;
+    private static readonly CAPTURE_POOL = 100;
+
+    /** The raw pg pool behind the adapter — the same postgres-only escape
+     * hatch the harvester readers above use. */
+    private pgPool(): any {
+        const pool = (this.adapter as any).pool;
+        if (!pool) {
+            throw new Error('PostgreSQL adapter not connected');
+        }
+        return pool;
+    }
+
+    /**
+     * Capture one /search event + its full pre-eviction candidate pool into
+     * search_events/search_candidates. No-op unless MCPMEM_TELEMETRY (and
+     * hybrid) is on. Called fire-and-forget AFTER res.json -- never on the
+     * response path -- so it re-embeds the query itself (one extra Ollama
+     * call, off the hot path) rather than threading the vector out of the
+     * adapter. The event row is written FIRST, vector-free: if the re-embed
+     * fails (Ollama brownout), the event + returned_ids survive and only the
+     * candidate pool is lost.
+     */
+    async captureSearchEvent(ev: {
+        search_id: string;
+        query_text: string;
+        session_id?: string;
+        match_count: number;
+        returned_ids: string[];
+    }): Promise<void> {
+        if (!this.telemetryEnabled) return;
+        if (!this.devProjectId) {
+            throw new Error('DatabaseService not initialized. Call initialize() first.');
+        }
+        const pool = this.pgPool();
+        await pool.query(
+            `INSERT INTO search_events
+               (search_id, query_text, query_hash, project_id, session_id,
+                match_count, rrf_k, pool, returned_ids)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             ON CONFLICT (search_id) DO UPDATE SET
+               query_text   = EXCLUDED.query_text,
+               query_hash   = EXCLUDED.query_hash,
+               project_id   = EXCLUDED.project_id,
+               session_id   = EXCLUDED.session_id,
+               match_count  = EXCLUDED.match_count,
+               rrf_k        = EXCLUDED.rrf_k,
+               pool         = EXCLUDED.pool,
+               returned_ids = EXCLUDED.returned_ids`,
+            [ev.search_id, ev.query_text, sha256Hex(ev.query_text),
+             this.devProjectId, ev.session_id ?? null,
+             ev.match_count, DatabaseService.CAPTURE_RRF_K,
+             DatabaseService.CAPTURE_POOL, ev.returned_ids]
+        );
+        const queryVector = await generateEmbedding(ev.query_text);
+        // Pre-eviction by design: search_hybrid_candidates() carries no
+        // evicted_at filter, so an eviction-caused miss stays visible.
+        await pool.query(
+            `INSERT INTO search_candidates
+               (search_id, memory_id, fts_rank, vec_rank, trgm_rank, rrf, final_rank, returned)
+             SELECT $1, c.memory_id, c.fts_rank, c.vec_rank, c.trgm_rank,
+                    c.rrf, c.final_rank, c.memory_id = ANY($6::text[])
+             FROM search_hybrid_candidates($2::text, $3::vector, $4::int, $5::text, $7::int) c
+             ON CONFLICT (search_id, memory_id) DO NOTHING`,
+            [ev.search_id, ev.query_text, JSON.stringify(queryVector),
+             DatabaseService.CAPTURE_RRF_K, this.devProjectId,
+             ev.returned_ids, DatabaseService.CAPTURE_POOL]
+        );
+    }
+
+    /**
+     * Record the reader's sufficiency verdict for one /search call (one loop
+     * iteration). Touches ONLY the loop columns; may create the row if it
+     * wins the race against the async capture. loop_outcome COALESCEs so a
+     * later verdict-without-outcome cannot null an already-written terminal
+     * label. Verdict/outcome are stored as free TEXT -- the orchestrator
+     * validates its enum verb-side.
+     */
+    async recordSearchVerdict(v: {
+        search_id: string;
+        verdict: string;
+        iteration: number;
+        loop_id: string;
+        outcome?: string;
+    }): Promise<void> {
+        await this.pgPool().query(
+            `INSERT INTO search_events
+               (search_id, sufficiency_verdict, loop_iteration, loop_id, loop_outcome)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (search_id) DO UPDATE SET
+               sufficiency_verdict = EXCLUDED.sufficiency_verdict,
+               loop_iteration      = EXCLUDED.loop_iteration,
+               loop_id             = EXCLUDED.loop_id,
+               loop_outcome        = COALESCE(EXCLUDED.loop_outcome, search_events.loop_outcome)`,
+            [v.search_id, v.verdict, v.iteration, v.loop_id, v.outcome ?? null]
+        );
+    }
+
+    /**
+     * Full provenance + tombstone view of one memory, NOT evicted-filtered:
+     * this is the recovery/inspection surface behind GET /memory/:memory_id
+     * (a wrongly-forgotten memory must stay visible here). Excludes only the
+     * bulk derived columns (embedding, content_fts).
+     */
+    async getMemoryFull(memoryId: string): Promise<{
+        memory_id: string; project_id: string; content: string;
+        content_type: string; metadata: unknown; source_key: string | null;
+        source_doc_id: string | null; session_id: string | null;
+        host: string | null; agent_id: string | null; provenance: unknown;
+        created_at: string; updated_at: string; evicted_at: string | null;
+        evicted_by: string | null; evict_reason: string | null;
+    } | null> {
+        const result = await this.pgPool().query(
+            `SELECT memory_id, project_id, content, content_type, metadata,
+                    source_key, source_doc_id, session_id, host, agent_id,
+                    provenance, created_at, updated_at,
+                    evicted_at, evicted_by, evict_reason
+             FROM memories WHERE memory_id = $1`,
+            [memoryId]
+        );
+        return result.rows[0] ?? null;
     }
 }
