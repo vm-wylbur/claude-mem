@@ -5,7 +5,7 @@
 // ------
 // mcp-long-term-memory-pg/src/db/adapters/base.ts
 
-import { MemoryType, MemoryMetadata, Memory } from '../service.js';
+import { MemoryType, MemoryMetadata, MemoryProvenance, Memory } from '../service.js';
 
 /**
  * Database Adapter Interface for Memory Management System
@@ -107,6 +107,14 @@ export interface DatabaseAdapter {
    * @param sourceKey - Optional stable upsert key. When provided, re-storing
    *   the same key updates the existing row in place (content, embedding,
    *   metadata) instead of inserting a duplicate. Omit for content-hash dedup.
+   * @param sourceDocId - Optional provenance link to lessons_learned_docs.
+   *   On conflict it never clears: omitting it keeps the existing link.
+   * @param provenance - Optional client-supplied write provenance
+   *   (session_id/host/agent_id → typed columns). Conflict policy: on a
+   *   KEYED upsert (an edit) provided fields overwrite and omitted fields
+   *   keep the existing value; on an UNKEYED content-hash conflict
+   *   (identical content) existing values win — the new write only fills
+   *   NULLs, so the original author keeps attribution.
    * @returns Promise resolving to the new memory hash ID (as string)
    */
   storeMemory(
@@ -115,7 +123,8 @@ export interface DatabaseAdapter {
     metadata: MemoryMetadata,
     projectId: string,
     sourceKey?: string,
-    sourceDocId?: string
+    sourceDocId?: string,
+    provenance?: MemoryProvenance
   ): Promise<string>;
 
   /**

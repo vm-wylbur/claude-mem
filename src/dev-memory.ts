@@ -1,4 +1,4 @@
-import { DatabaseService, MemoryType, MemoryMetadata } from './db/service.js';
+import { DatabaseService, MemoryType, MemoryMetadata, MemoryProvenance } from './db/service.js';
 
 export async function storeDevProgress(
     db: DatabaseService,
@@ -6,14 +6,15 @@ export async function storeDevProgress(
     type: MemoryType = 'decision',
     metadata: Partial<MemoryMetadata> = {},
     sourceKey?: string,
-    sourceDocId?: string
+    sourceDocId?: string,
+    provenance?: MemoryProvenance
 ): Promise<string> {
     const fullMetadata: MemoryMetadata = {
         date: new Date().toISOString(),
         ...metadata
     };
 
-    return db.storeDevMemory(content, type, fullMetadata, sourceKey, sourceDocId);
+    return db.storeDevMemory(content, type, fullMetadata, sourceKey, sourceDocId, provenance);
 }
 
 // Store our initial development progress
