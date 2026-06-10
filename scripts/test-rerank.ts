@@ -71,6 +71,11 @@ async function run(): Promise<void> {
   check('sends documents = contents',
     JSON.stringify(captured?.body.documents) === JSON.stringify(['doc zero', 'doc one', 'doc two']));
 
+  // 2b. L7 contract bump: scored items carry rerank_score (bge relevance).
+  check('attaches rerank_score to scored items',
+    out[0].rerank_score === 0.9 && out[1].rerank_score === 0.5 && out[2].rerank_score === 0.1,
+    `got ${out.map(m => m.rerank_score).join(',')}`);
+
   // 3. Unreturned indices appended in original pool order.
   stubFetch(() => ({ ok: true, status: 200, json: async () => ({ results: [
     { index: 2, relevance_score: 0.9 },
@@ -78,6 +83,9 @@ async function run(): Promise<void> {
   out = await rerankByBge('q', POOL, CFG);
   check('appends unreturned in pool order', out.map(m => m.memory_id).join(',') === 'm2,m0,m1',
     `got ${out.map(m => m.memory_id).join(',')}`);
+  check('unreturned items carry NO rerank_score (absent, not 0)',
+    out[0].rerank_score === 0.9 && !('rerank_score' in out[1]) && !('rerank_score' in out[2]),
+    `got ${out.map(m => String(m.rerank_score)).join(',')}`);
 
   // 3b. Non-finite relevance_score elements are dropped (no NaN-comparator
   // demotion); the finite-scored candidates still order correctly.
