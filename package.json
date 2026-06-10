@@ -10,10 +10,10 @@
     "clean": "rm -rf dist",
     
     "dev": "npm run build && npm start",
-    "init:postgres": "npm run build && MCPMEM_DB_TYPE=postgresql npx tsx scripts/init-postgres.ts",
+    "init:postgres": "npm run build && npx tsx scripts/init-postgres.ts",
     "test": "npm run test:all",
     "test:all": "npx tsx scripts/test-all.ts",
-    "test:postgres": "MCPMEM_DB_TYPE=postgresql npx tsx scripts/test-postgres.ts"
+    "test:postgres": "npx tsx scripts/test-postgres.ts"
   },
   "keywords": [],
   "author": "",

@@ -70,11 +70,11 @@ class Phase1ExtensionTester {
     const config: DatabaseConfig = {
       type: 'postgresql',
       postgresql: {
-        hosts: (process.env.MCPMEM_PG_HOSTS || 'localhost').split(','),
-        database: process.env.MCPMEM_PG_DATABASE || 'claude_mem',
-        user: process.env.MCPMEM_PG_USER || 'pball',
-        password: process.env.MCPMEM_PG_PASSWORD,
-        port: process.env.MCPMEM_PG_PORT ? parseInt(process.env.MCPMEM_PG_PORT) : 5432,
+        hosts: (process.env.CLAUDE_MEM_PG_HOSTS || 'localhost').split(','),
+        database: process.env.CLAUDE_MEM_PG_DATABASE || 'claude_mem',
+        user: process.env.CLAUDE_MEM_PG_USER || 'pball',
+        password: process.env.CLAUDE_MEM_PG_PASSWORD,
+        port: process.env.CLAUDE_MEM_PG_PORT ? parseInt(process.env.CLAUDE_MEM_PG_PORT) : 5432,
       }
     };
     

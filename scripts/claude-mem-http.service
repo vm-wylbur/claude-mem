@@ -14,7 +14,7 @@
 #
 # Secrets file at /home/pball/.config/claude-mem/env (mode 600, not in git):
 #   CLAUDE_MEM_SECRET=<generated secret>
-#   MCPMEM_PG_PASSWORD=<postgres password>
+#   CLAUDE_MEM_PG_PASSWORD=<postgres password>
 #
 # Check status:
 #   sudo systemctl status claude-mem-http

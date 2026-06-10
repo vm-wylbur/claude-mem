@@ -113,20 +113,20 @@ async function run(): Promise<void> {
   restoreFetch();
 
   // 8. rerankConfigFromEnv: off when flag unset.
-  const savedFlag = process.env.MCPMEM_RERANK;
-  const savedKeyFile = process.env.MCPMEM_RERANK_KEY_FILE;
-  delete process.env.MCPMEM_RERANK;
+  const savedFlag = process.env.CLAUDE_MEM_RERANK;
+  const savedKeyFile = process.env.CLAUDE_MEM_RERANK_KEY_FILE;
+  delete process.env.CLAUDE_MEM_RERANK;
   check('config null when flag unset', rerankConfigFromEnv() === null);
 
   // 9. Flag set but key file missing -> null (service degrades to hybrid).
-  process.env.MCPMEM_RERANK = '1';
-  process.env.MCPMEM_RERANK_KEY_FILE = path.join(os.tmpdir(), 'definitely-absent-bearer-xyz');
+  process.env.CLAUDE_MEM_RERANK = '1';
+  process.env.CLAUDE_MEM_RERANK_KEY_FILE = path.join(os.tmpdir(), 'definitely-absent-bearer-xyz');
   check('config null when bearer missing', rerankConfigFromEnv() === null);
 
   // 10. Flag set + key file present -> config with the parsed key.
   const tmp = path.join(os.tmpdir(), `rerank-key-${process.pid}`);
   fs.writeFileSync(tmp, 'SOMETHING=x\nAPI_KEY=secret-bearer-123\n');
-  process.env.MCPMEM_RERANK_KEY_FILE = tmp;
+  process.env.CLAUDE_MEM_RERANK_KEY_FILE = tmp;
   const cfg = rerankConfigFromEnv();
   check('config loads key from file (SPOT)', cfg?.key === 'secret-bearer-123', `got ${cfg?.key}`);
   check('config defaults pool=50, truncate=512', cfg?.pool === 50 && cfg?.truncateTokens === 512,
@@ -134,8 +134,8 @@ async function run(): Promise<void> {
   fs.unlinkSync(tmp);
 
   // restore env
-  if (savedFlag === undefined) delete process.env.MCPMEM_RERANK; else process.env.MCPMEM_RERANK = savedFlag;
-  if (savedKeyFile === undefined) delete process.env.MCPMEM_RERANK_KEY_FILE; else process.env.MCPMEM_RERANK_KEY_FILE = savedKeyFile;
+  if (savedFlag === undefined) delete process.env.CLAUDE_MEM_RERANK; else process.env.CLAUDE_MEM_RERANK = savedFlag;
+  if (savedKeyFile === undefined) delete process.env.CLAUDE_MEM_RERANK_KEY_FILE; else process.env.CLAUDE_MEM_RERANK_KEY_FILE = savedKeyFile;
 
   // report
   let failed = 0;

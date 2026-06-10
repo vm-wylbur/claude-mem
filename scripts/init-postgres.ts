@@ -16,11 +16,9 @@
  *   npm run init:postgres
  *   
  * Environment Variables:
- *   MCPMEM_PG_HOSTS=snowl,snowball
- *   MCPMEM_PG_DATABASE=claude_mem
- *   MCPMEM_PG_USER=pball
- *   MCPMEM_PG_TUNNEL=true
- *   MCPMEM_PG_TUNNEL_PORT=5433
+ *   CLAUDE_MEM_PG_HOSTS=snowl,snowball
+ *   CLAUDE_MEM_PG_DATABASE=claude_mem
+ *   CLAUDE_MEM_PG_USER=pball
  */
 
 import { config } from 'dotenv';
@@ -35,16 +33,12 @@ async function main() {
     console.error('🚀 PostgreSQL Database Initialization');
     console.error('=====================================\n');
     
-    // Get PostgreSQL configuration (TOML file + MCPMEM_PG_* env overrides).
+    // Get PostgreSQL configuration (TOML file + CLAUDE_MEM_PG_* env overrides).
     // The legacy getDatabaseConfig() was retired (throws) -- use the TOML loader.
+    // (No DB_TYPE gate: the TOML loader's type is hardcoded 'postgresql';
+    // the old MCPMEM_DB_TYPE check could never fail and the var read nothing.)
     const dbConfig = await getDatabaseConfigToml();
-    
-    if (dbConfig.type !== 'postgresql') {
-      console.error('❌ Set MCPMEM_DB_TYPE=postgresql to use this script');
-      console.error('   Example: MCPMEM_DB_TYPE=postgresql npm run init:postgres');
-      process.exit(1);
-    }
-    
+
     const pgConfig = dbConfig.postgresql!;
     console.error('Configuration:');
     console.error(`  Database: ${pgConfig.database}`);
@@ -60,15 +54,10 @@ async function main() {
     await initializePostgresDatabase(dbConfig);
     
     console.error('\n✅ PostgreSQL initialization complete!');
-    console.error('\nTo use PostgreSQL, set these environment variables:');
-    console.error('  MCPMEM_DB_TYPE=postgresql');
-    console.error(`  MCPMEM_PG_DATABASE=${pgConfig.database}`);
-    console.error(`  MCPMEM_PG_USER=${pgConfig.user}`);
-    console.error(`  MCPMEM_PG_HOSTS=${pgConfig.hosts.join(',')}`);
-    console.error(`  MCPMEM_PG_TUNNEL=${pgConfig.tunnel}`);
-    if (pgConfig.tunnel) {
-      console.error(`  MCPMEM_PG_TUNNEL_PORT=${pgConfig.tunnelPort}`);
-    }
+    console.error('\nTo use PostgreSQL, set these environment variables (or the TOML file):');
+    console.error(`  CLAUDE_MEM_PG_DATABASE=${pgConfig.database}`);
+    console.error(`  CLAUDE_MEM_PG_USER=${pgConfig.user}`);
+    console.error(`  CLAUDE_MEM_PG_HOSTS=${pgConfig.hosts.join(',')}`);
     
   } catch (error) {
     console.error('\n❌ Initialization failed:');

@@ -59,7 +59,7 @@ class PostgreSQLTester {
       const dbConfig = getDatabaseConfig();
       
       if (dbConfig.type !== 'postgresql') {
-        throw new Error('Set MCPMEM_DB_TYPE=postgresql to run PostgreSQL tests');
+        throw new Error('legacy config path retired; this script needs the TOML migration');
       }
       
       this.adapter = new PostgresAdapter(dbConfig);

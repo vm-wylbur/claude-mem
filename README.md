@@ -80,8 +80,8 @@ Claude Memory uses TOML configuration files for flexible setup:
 
 ### Quick Setup
 ```bash
-# PostgreSQL with environment variable
-MCPMEM_DB_TYPE=postgresql npm run dev
+# PostgreSQL (config via TOML or CLAUDE_MEM_PG_* env overrides)
+npm run dev
 
 # Or configure via TOML file (recommended)
 cp claude-mem.toml.example ~/.config/claude-mem/claude-mem.toml
