@@ -59,6 +59,10 @@ export interface Memory {
     project_id: string;  // Hash as hex string
     created_at: string;
     updated_at?: string;
+    // L7 contract bump: bge relevance when the rerank slot scored this item
+    // (the read-loop cascade's sufficiency signal). "Not scored" (hybrid
+    // path, degrade path, reranker omitted it) = field ABSENT, never 0.
+    rerank_score?: number;
 }
 
 /**

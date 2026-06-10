@@ -77,12 +77,20 @@ interface RerankResult { index: number; relevance_score: number; }
  * shape so it returns exactly what it was given, reordered -- no coupling to
  * the Memory type. Throws on any transport/protocol failure; the caller is
  * responsible for the degrade-to-hybrid catch.
+ *
+ * L7 contract bump (neg-6b0a3bf5): each item the reranker actually scored
+ * comes back with `rerank_score` attached (bge relevance, higher = more
+ * relevant) -- the read-loop cascade thresholds this as its sufficiency
+ * signal. Items the reranker did not return (appended in pool order) and the
+ * degrade-to-hybrid path carry no field at all: "not scored" is expressed by
+ * OMITTING rerank_score, never by writing 0 (a genuine bge score of 0 would
+ * be attached as 0).
  */
 export async function rerankByBge<T extends { memory_id: string; content: string }>(
   query: string,
   candidates: T[],
   cfg: RerankConfig,
-): Promise<T[]> {
+): Promise<Array<T & { rerank_score?: number }>> {
   if (candidates.length === 0) return candidates;
 
   const body = JSON.stringify({
@@ -118,11 +126,11 @@ export async function rerankByBge<T extends { memory_id: string; content: string
     .filter(r => Number.isFinite(r.relevance_score))
     .sort((a, b) => b.relevance_score - a.relevance_score);
   const seen = new Set<number>();
-  const order: T[] = [];
+  const order: Array<T & { rerank_score?: number }> = [];
   for (const r of ranked) {
     if (Number.isInteger(r.index) && r.index >= 0 && r.index < candidates.length && !seen.has(r.index)) {
       seen.add(r.index);
-      order.push(candidates[r.index]);
+      order.push({ ...candidates[r.index], rerank_score: r.relevance_score });
     }
   }
   for (let i = 0; i < candidates.length; i++) {
