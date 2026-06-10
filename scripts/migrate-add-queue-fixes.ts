@@ -9,7 +9,7 @@
 // running claude-mem PostgreSQL database. Safe to re-run.
 //
 // Usage:
-//   MCPMEM_DB_TYPE=postgresql npx tsx scripts/migrate-add-queue-fixes.ts
+//   npx tsx scripts/migrate-add-queue-fixes.ts
 //
 // Reads connection from ~/.config/claude-mem/claude-mem.toml (same as the
 // running server). Does NOT touch any existing tables.
@@ -66,7 +66,7 @@ async function main() {
   }
 
   const pgConfig = dbConfig.postgresql;
-  const password = pgConfig.password ?? process.env.MCPMEM_PG_PASSWORD ?? '';
+  const password = pgConfig.password ?? process.env.CLAUDE_MEM_PG_PASSWORD ?? '';
 
   const pool = new pg.Pool({
     host: pgConfig.hosts[0],

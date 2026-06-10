@@ -7,6 +7,7 @@
 
 import { z } from 'zod';
 import { sha256Hex } from '../utils/hash.js';
+import { memEnv } from '../utils/env.js';
 import { generateEmbedding } from '../embeddings.js';
 import {
   DatabaseAdapter,
@@ -86,7 +87,7 @@ export class DatabaseService {
     private adapter: DatabaseAdapter;
     private devProjectId: string | null = null;
     // Kill-switch for the Phase 1 hybrid retrieval path. Off by default so
-    // deploying the code changes nothing until MCPMEM_HYBRID_SEARCH is set.
+    // deploying the code changes nothing until CLAUDE_MEM_HYBRID_SEARCH is set.
     // Read once at construction: toggling requires a service restart (no
     // code redeploy), since the server builds one DatabaseService at startup.
     private readonly useHybridSearch: boolean;
@@ -96,7 +97,7 @@ export class DatabaseService {
     private readonly rerankConfig: RerankConfig | null;
     // Miss-telemetry capture (Workstreams A+B, neg-6b0a3bf5). Off by default
     // per the deploy convention: shipping the code changes nothing until
-    // MCPMEM_TELEMETRY is set. Requires hybrid serving — the capture records
+    // CLAUDE_MEM_TELEMETRY is set. Requires hybrid serving — the capture records
     // the hybrid candidate pool, which would misattribute the results if the
     // pure-vector path served the query. Gates ONLY the /search capture-write;
     // the /search-verdict write path is always live.
@@ -104,10 +105,10 @@ export class DatabaseService {
 
     constructor(adapter: DatabaseAdapter) {
         this.adapter = adapter;
-        this.useHybridSearch = /^(1|true|yes|on)$/i.test(process.env.MCPMEM_HYBRID_SEARCH ?? '');
+        this.useHybridSearch = /^(1|true|yes|on)$/i.test(memEnv('HYBRID_SEARCH') ?? '');
         this.rerankConfig = this.useHybridSearch ? rerankConfigFromEnv() : null;
         this.telemetryEnabled = this.useHybridSearch
-            && /^(1|true|yes|on)$/i.test(process.env.MCPMEM_TELEMETRY ?? '');
+            && /^(1|true|yes|on)$/i.test(memEnv('TELEMETRY') ?? '');
     }
 
     /**
@@ -663,7 +664,7 @@ export class DatabaseService {
 
     /**
      * Capture one /search event + its full pre-eviction candidate pool into
-     * search_events/search_candidates. No-op unless MCPMEM_TELEMETRY (and
+     * search_events/search_candidates. No-op unless CLAUDE_MEM_TELEMETRY (and
      * hybrid) is on. Called fire-and-forget AFTER res.json -- never on the
      * response path -- so it re-embeds the query itself (one extra Ollama
      * call, off the hot path) rather than threading the vector out of the

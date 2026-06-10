@@ -10,6 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { DatabaseConfig, ConfigurationInfo } from './db/adapters/base.js';
+import { memEnv } from './utils/env.js';
 
 interface TomlConfig {
   database: {
@@ -113,26 +114,27 @@ export class TomlConfigLoader {
 
   private buildDatabaseConfig(): DatabaseConfig {
     // PostgreSQL configuration
-    const hosts = process.env.MCPMEM_PG_HOSTS?.split(',') ||
+    const hosts = memEnv('PG_HOSTS')?.split(',') ||
                  this.config?.database.postgresql?.hosts ||
                  ['localhost'];
+    const envPort = memEnv('PG_PORT');
 
     return {
       type: 'postgresql',
       postgresql: {
         hosts,
-        database: process.env.MCPMEM_PG_DATABASE ||
+        database: memEnv('PG_DATABASE') ||
                  this.config?.database.postgresql?.database ||
                  'claude_mem',
-        user: process.env.MCPMEM_PG_USER ||
+        user: memEnv('PG_USER') ||
              this.config?.database.postgresql?.user ||
              'pball',
-        password: process.env.MCPMEM_PG_PASSWORD ||
+        password: memEnv('PG_PASSWORD') ||
                  this.config?.database.postgresql?.password,
-        port: process.env.MCPMEM_PG_PORT ?
-             parseInt(process.env.MCPMEM_PG_PORT) :
+        port: envPort ?
+             parseInt(envPort) :
              this.config?.database.postgresql?.port,
-        sslmode: process.env.MCPMEM_PG_SSLMODE ||
+        sslmode: memEnv('PG_SSLMODE') ||
                 this.config?.database.postgresql?.sslmode,
         max_connections: this.config?.database.postgresql?.max_connections,
         connection_timeout_ms: this.config?.database.postgresql?.connection_timeout_ms
@@ -199,26 +201,30 @@ export function getConfigurationInfo(): ConfigurationInfo {
         break;
       }
     }
-  } else if (process.env.MCPMEM_PG_HOSTS || process.env.MCPMEM_PG_DATABASE) {
+  } else if (memEnv('PG_HOSTS') || memEnv('PG_DATABASE')) {
     source = 'env';
   } else {
     source = 'default';
   }
 
-  // Detect environment variable overrides
+  // Detect environment variable overrides (either prefix; the summary names
+  // whichever spelling is actually set).
   const overrides: string[] = [];
-  const envVars = [
-    'MCPMEM_PG_HOSTS',
-    'MCPMEM_PG_DATABASE',
-    'MCPMEM_PG_USER',
-    'MCPMEM_PG_PASSWORD',
-    'MCPMEM_PG_PORT',
-    'MCPMEM_PG_SSLMODE'
+  const suffixes = [
+    'PG_HOSTS',
+    'PG_DATABASE',
+    'PG_USER',
+    'PG_PASSWORD',
+    'PG_PORT',
+    'PG_SSLMODE'
   ];
 
-  for (const envVar of envVars) {
-    if (process.env[envVar]) {
-      overrides.push(envVar);
+  for (const suffix of suffixes) {
+    for (const name of [`CLAUDE_MEM_${suffix}`, `MCPMEM_${suffix}`]) {
+      if (process.env[name]) {
+        overrides.push(name);
+        break;
+      }
     }
   }
 

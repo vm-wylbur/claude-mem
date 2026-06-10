@@ -87,18 +87,17 @@ class TestRunner {
     console.error('🔍 Environment Check');
     console.error('===================');
     
+    // Config normally comes from the TOML file; these are the env OVERRIDES
+    // (claude-mem#14: CLAUDE_MEM_* is canonical, MCPMEM_* deprecated).
     const requiredEnvVars = [
-      'MCPMEM_DB_TYPE',
-      'MCPMEM_PG_DATABASE', 
-      'MCPMEM_PG_USER',
-      'MCPMEM_PG_TUNNEL'
+      'CLAUDE_MEM_PG_DATABASE',
+      'CLAUDE_MEM_PG_USER'
     ];
-    
+
     const optionalEnvVars = [
-      'MCPMEM_PG_HOSTS',
-      'MCPMEM_PG_TUNNEL_PORT',
-      'MCPMEM_SSH_USER',
-      'MCPMEM_SSH_KEY_PATH'
+      'CLAUDE_MEM_PG_HOSTS',
+      'CLAUDE_MEM_PG_PORT',
+      'CLAUDE_MEM_PG_SSLMODE'
     ];
     
     console.error('Required Environment Variables:');
@@ -121,12 +120,6 @@ class TestRunner {
       }
     }
     
-    // Check if we're in PostgreSQL mode
-    if (process.env.MCPMEM_DB_TYPE !== 'postgresql') {
-      console.error('\n⚠️  MCPMEM_DB_TYPE is not set to "postgresql"');
-      console.error('   Set MCPMEM_DB_TYPE=postgresql to test PostgreSQL functionality');
-      console.error('   Some tests may be skipped or fail.');
-    }
   }
 
   private async runTestSuite(suite: TestSuite): Promise<boolean> {
@@ -164,12 +157,12 @@ class TestRunner {
       console.error('✅ Phase 1 Extensions (quick-store, recent-context, search-enhanced) working');
       console.error('✅ Vector similarity search operational');
       console.error('');
-      console.error('🚀 The memory MCP server is ready for PostgreSQL production use!');
+      console.error('🚀 claude-mem is ready for PostgreSQL production use!');
       console.error('');
       console.error('Next steps:');
       console.error('1. Run: npm run init:postgres (if not done already)');
-      console.error('2. Start the server: MCPMEM_DB_TYPE=postgresql npm run dev');
-      console.error('3. Test storing memories through the MCP interface');
+      console.error('2. Start the server: npm run dev');
+      console.error('3. Test storing memories through the REST interface');
     } else {
       console.error('❌ SOME TESTS FAILED');
       console.error('');
