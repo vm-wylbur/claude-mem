@@ -225,6 +225,39 @@ app.get('/memory/:memory_id', async (req: express.Request, res: express.Response
     res.json({ memory });
 });
 
+// POST /memory/:memory_id/evict — the W5 forget-verb mutation surface
+// (contract per claude-mem#12). evicted_by + evict_reason required; reason
+// is free TEXT here, the structured-evidence enum (superseded-by <id> /
+// contradicted-by-disk <path> / stale-as-of <date>) is validated verb-side.
+// First-evictor-wins: re-evicting returns 200 with the ORIGINAL tombstone
+// and already_evicted=true, never clobbering the first actor/reason.
+app.post('/memory/:memory_id/evict', async (req: express.Request, res: express.Response): Promise<void> => {
+    const b = (req.body ?? {}) as { evicted_by?: unknown; evict_reason?: unknown };
+    if (typeof b.evicted_by !== 'string' || b.evicted_by.length === 0
+        || typeof b.evict_reason !== 'string' || b.evict_reason.length === 0) {
+        res.status(400).json({ error: 'evicted_by and evict_reason (non-empty strings) required' });
+        return;
+    }
+    const result = await dbService.evictMemory(req.params['memory_id'], b.evicted_by, b.evict_reason);
+    if (!result) {
+        res.status(404).json({ error: 'memory not found' });
+        return;
+    }
+    res.json(result);
+});
+
+// POST /memory/:memory_id/unevict — the explicit recovery surface (clears
+// the tombstone). Idempotent: unevicting a live row is a 200 no-op with
+// was_evicted=false.
+app.post('/memory/:memory_id/unevict', async (req: express.Request, res: express.Response): Promise<void> => {
+    const result = await dbService.unevictMemory(req.params['memory_id']);
+    if (!result) {
+        res.status(404).json({ error: 'memory not found' });
+        return;
+    }
+    res.json(result);
+});
+
 // ── Doc harvester: lessons_learned_docs + memories.source_doc_id + extraction_decisions.
 // The distiller is the client — GET the manifest for change-detection/dedup,
 // upsert the raw doc, store distilled memories linked by source_doc_id, and log

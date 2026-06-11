@@ -779,4 +779,71 @@ export class DatabaseService {
         );
         return result.rows[0] ?? null;
     }
+
+    /**
+     * Tombstone a memory (W5 mutation surface, contract per claude-mem#12).
+     * FIRST-EVICTOR-WINS, atomically: the guarded UPDATE only fires when the
+     * row is live, so a re-evict cannot clobber the original actor/reason/
+     * timestamp (matching /store's first-writer-wins stance). evict_reason is
+     * stored as free TEXT — the structured-evidence enum is validated
+     * verb-side in mem-forget.sh, not here.
+     *
+     * Returns null if no such memory; otherwise the full tombstone row (same
+     * shape as getMemoryFull) + whether this call was a no-op on an existing
+     * tombstone.
+     */
+    async evictMemory(memoryId: string, evictedBy: string, evictReason: string): Promise<{
+        memory: NonNullable<Awaited<ReturnType<DatabaseService['getMemoryFull']>>>;
+        already_evicted: boolean;
+    } | null> {
+        // RETURNING makes the response an atomic snapshot of the row this
+        // call produced — a separate re-read could race a concurrent
+        // unevict and return a live-looking row beside already_evicted=false
+        // (review catch). Saves the second round-trip on the happy path too.
+        const updated = await this.pgPool().query(
+            `UPDATE memories
+             SET evicted_at = now(), evicted_by = $2, evict_reason = $3
+             WHERE memory_id = $1 AND evicted_at IS NULL
+             RETURNING memory_id, project_id, content, content_type, metadata,
+                       source_key, source_doc_id, session_id, host, agent_id,
+                       provenance, created_at, updated_at,
+                       evicted_at, evicted_by, evict_reason`,
+            [memoryId, evictedBy, evictReason]
+        );
+        if ((updated.rowCount ?? 0) > 0) {
+            return { memory: updated.rows[0], already_evicted: false };
+        }
+        // No match: nonexistent (404) or already tombstoned (no-op, return
+        // the ORIGINAL tombstone — first-evictor-wins).
+        const memory = await this.getMemoryFull(memoryId);
+        if (!memory) return null;
+        return { memory, already_evicted: true };
+    }
+
+    /**
+     * Clear a tombstone (the explicit recovery surface; previously a psql
+     * one-liner). Idempotent: unevicting a live row is a 200 no-op with
+     * was_evicted=false. Returns null if no such memory.
+     */
+    async unevictMemory(memoryId: string): Promise<{
+        memory: NonNullable<Awaited<ReturnType<DatabaseService['getMemoryFull']>>>;
+        was_evicted: boolean;
+    } | null> {
+        const updated = await this.pgPool().query(
+            `UPDATE memories
+             SET evicted_at = NULL, evicted_by = NULL, evict_reason = NULL
+             WHERE memory_id = $1 AND evicted_at IS NOT NULL
+             RETURNING memory_id, project_id, content, content_type, metadata,
+                       source_key, source_doc_id, session_id, host, agent_id,
+                       provenance, created_at, updated_at,
+                       evicted_at, evicted_by, evict_reason`,
+            [memoryId]
+        );
+        if ((updated.rowCount ?? 0) > 0) {
+            return { memory: updated.rows[0], was_evicted: true };
+        }
+        const memory = await this.getMemoryFull(memoryId);
+        if (!memory) return null;
+        return { memory, was_evicted: false };
+    }
 }
