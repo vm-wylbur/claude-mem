@@ -6,11 +6,13 @@
 // Problem: "duplicate key value violates unique constraint tags_pkey" 
 // doesn't identify which specific tag already exists
 
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, beforeAll } from '@jest/globals';
 import { DatabaseService } from '../src/db/service.js';
 import { createDatabaseAdapter } from '../src/config.js';
+import { assertTestDatabase } from '../scripts/test-db-guard.js';
 
 describe('Tag Constraint Validation - RED Phase', () => {
+  beforeAll(async () => { await assertTestDatabase(); });
   let dbService: DatabaseService;
   let testMemoryIds: string[] = [];
 

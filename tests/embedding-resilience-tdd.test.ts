@@ -2,12 +2,14 @@
 // TDD Test for Embedding Resilience Issues
 // Tests for graceful handling of Ollama server failures (CUDA out of memory, etc.)
 
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, beforeAll } from '@jest/globals';
 import { DatabaseService } from '../src/db/service.js';
 import { QuickStoreTool } from '../src/tools/quick-store.js';
 import { generateEmbedding, checkOllamaHealth } from '../src/embeddings.js';
+import { assertTestDatabase } from '../scripts/test-db-guard.js';
 
 describe('Embedding Resilience TDD', () => {
+  beforeAll(async () => { await assertTestDatabase(); });
   let dbService: DatabaseService;
   let testMemoryIds: string[] = [];
 

@@ -17,6 +17,7 @@ import { config } from 'dotenv';
 import { getDatabaseConfig } from '../src/config.js';
 import { PostgresAdapter } from '../src/db/adapters/postgres.js';
 import { DatabaseService } from '../src/db/service.js';
+import { assertTestDatabase } from './test-db-guard.js';
 
 // Load environment variables
 config();
@@ -323,6 +324,7 @@ class PostgreSQLTester {
 }
 
 async function main() {
+  await assertTestDatabase();
   const tester = new PostgreSQLTester();
   await tester.runAllTests();
 }

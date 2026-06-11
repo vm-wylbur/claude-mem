@@ -6,6 +6,7 @@ import { initializeHasher } from '../src/utils/hash.js';
 import { getDatabaseConfigToml } from '../src/config-toml.js';
 import { PostgresAdapter } from '../src/db/adapters/postgres.js';
 import { DatabaseService } from '../src/db/service.js';
+import { assertTestDatabase } from './test-db-guard.js';
 
 interface TestResult {
   name: string;
@@ -304,6 +305,7 @@ class MethodParityContractTester {
 }
 
 async function main() {
+  await assertTestDatabase();
   const tester = new MethodParityContractTester();
   await tester.runAllTests();
 }
