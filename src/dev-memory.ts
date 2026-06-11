@@ -1,4 +1,4 @@
-import { DatabaseService, MemoryType, MemoryMetadata, MemoryProvenance } from './db/service.js';
+import { DatabaseService, MemoryType, MemoryMetadata, MemoryProvenance, StoreMemoryOutcome } from './db/service.js';
 
 export async function storeDevProgress(
     db: DatabaseService,
@@ -8,7 +8,7 @@ export async function storeDevProgress(
     sourceKey?: string,
     sourceDocId?: string,
     provenance?: MemoryProvenance
-): Promise<string> {
+): Promise<StoreMemoryOutcome> {
     const fullMetadata: MemoryMetadata = {
         date: new Date().toISOString(),
         ...metadata
@@ -19,7 +19,7 @@ export async function storeDevProgress(
 
 // Store our initial development progress
 export async function storeInitialProgress(db: DatabaseService): Promise<void> {
-    const memoryId = await storeDevProgress(
+    const { memoryId } = await storeDevProgress(
         db,
         'Initial project setup completed with core infrastructure components',
         'decision',
@@ -57,7 +57,7 @@ export async function storeInitialProgress(db: DatabaseService): Promise<void> {
     ]);
 
     // Store memory about MCP tools implementation
-    const toolsMemoryId = await storeDevProgress(
+    const { memoryId: toolsMemoryId } = await storeDevProgress(
         db,
         'Implemented MCP tools for development memory interaction',
         'code',

@@ -14,7 +14,7 @@ interface TestResult {
 // Mock functions
 const mockDetectMemoryType = (content: string) => 'code';
 const mockGenerateSmartTags = async (content: string, type: string) => ['typescript', 'test'];
-const mockStoreMemoryWithTags = async () => 'mock-memory-id-456';
+const mockStoreMemoryWithTags = async () => ({ memoryId: 'mock-memory-id-456', updated: true, evicted: false });
 
 class QuickStoreToolTester {
   private results: TestResult[] = [];

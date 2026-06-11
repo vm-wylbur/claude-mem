@@ -19,7 +19,7 @@ claude-mem/src/index-http.ts
 import { randomUUID } from 'node:crypto';
 import { config } from 'dotenv';
 import express from 'express';
-import { DatabaseService, QueueFixInput, QueueFixFilter, QueueFixConsumedOutcome, MemoryType, MemoryMetadata, MemoryProvenance } from './db/service.js';
+import { DatabaseService, QueueFixInput, QueueFixFilter, QueueFixConsumedOutcome, MemoryType, MemoryMetadata, MemoryProvenance, StoreMemoryOutcome } from './db/service.js';
 import { createDatabaseAdapterToml } from './config.js';
 import { getConfigSummaryToml } from './config-toml.js';
 import { storeInitialProgress, storeDevProgress } from './dev-memory.js';
@@ -60,12 +60,15 @@ async function storeMemoryWithTags(
     tags?: string[],
     sourceKey?: string,
     provenance?: MemoryProvenance
-): Promise<string> {
-    const memoryId = await storeDevProgress(dbService, content, type, metadata, sourceKey, undefined, provenance);
-    if (tags && tags.length > 0) {
-        await dbService.addMemoryTags(memoryId, tags);
+): Promise<StoreMemoryOutcome> {
+    const outcome = await storeDevProgress(dbService, content, type, metadata, sourceKey, undefined, provenance);
+    // Tag-attach only when the write actually took effect on a LIVE row: a
+    // refused keyed write must not mutate the owner's memory, and tagging a
+    // tombstoned row would create phantom tags on invisible content.
+    if (tags && tags.length > 0 && outcome.updated && !outcome.evicted) {
+        await dbService.addMemoryTags(outcome.memoryId, tags);
     }
-    return memoryId;
+    return outcome;
 }
 
 const restQuickStore = new QuickStoreTool(dbService, storeMemoryWithTags, detectMemoryType, generateSmartTags);
@@ -344,16 +347,25 @@ app.post('/harvest', async (req: express.Request, res: express.Response): Promis
         if (value === undefined) continue;
         provenance[name] = value;
     }
-    const memoryId = await storeDevProgress(
+    const outcome = await storeDevProgress(
         dbService, b.content, type, b.metadata ?? {},
         typeof b.source_key === 'string' && b.source_key.length > 0 ? b.source_key : undefined,
         typeof b.source_doc_id === 'string' && b.source_doc_id.length > 0 ? b.source_doc_id : undefined,
         Object.keys(provenance).length > 0 ? provenance : undefined,
     );
-    if (Array.isArray(b.tags) && b.tags.length > 0) {
-        await dbService.addMemoryTags(memoryId, b.tags);
+    // Same live-row tag rule as /store: no tags on refused or tombstoned rows.
+    if (Array.isArray(b.tags) && b.tags.length > 0 && outcome.updated && !outcome.evicted) {
+        await dbService.addMemoryTags(outcome.memoryId, b.tags);
     }
-    res.json({ success: true, memoryId });
+    // W8 signals (claude-mem#12): evicted = sticky-tombstone collision (the
+    // distiller records skip:tombstoned-collision and must NOT retire the
+    // doc); updated:false + deferred_to = keyed no-clobber refusal.
+    res.json({
+        success: true,
+        memoryId: outcome.memoryId,
+        ...(outcome.evicted ? { evicted: true } : {}),
+        ...(outcome.updated ? {} : { updated: false, deferred_to: outcome.deferred_to ?? null }),
+    });
 });
 
 app.post('/decision', async (req: express.Request, res: express.Response): Promise<void> => {

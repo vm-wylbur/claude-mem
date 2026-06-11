@@ -163,7 +163,7 @@ class PostgreSQLTester {
       );
       
       // Test memory storage
-      const memoryId = await this.adapter.storeMemory(
+      const { memoryId } = await this.adapter.storeMemory(
         'This is a test memory for automated testing',
         'code',
         {

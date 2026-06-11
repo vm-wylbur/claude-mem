@@ -123,7 +123,7 @@ describe('Embedding Resilience TDD', () => {
         'test-driven-development'
       ];
 
-      const memoryId = await dbService.storeMemory('Test content', 'code', {});
+      const { memoryId } = await dbService.storeMemory('Test content', 'code', {});
       testMemoryIds.push(memoryId);
 
       // Should not throw
@@ -139,7 +139,7 @@ describe('Embedding Resilience TDD', () => {
         'invalid--double-hyphen'
       ];
 
-      const memoryId = await dbService.storeMemory('Test content', 'code', {});
+      const { memoryId } = await dbService.storeMemory('Test content', 'code', {});
       testMemoryIds.push(memoryId);
 
       // Should throw for each invalid tag
@@ -158,12 +158,12 @@ describe('Embedding Resilience TDD', () => {
       if (healthInfo.connected) {
         // If Ollama is healthy, test the full workflow
         const mockStoreMemoryWithTags = async (content: string, type: any, metadata: any, tags?: string[]) => {
-          const memoryId = await dbService.storeMemory(content, type, metadata);
-          testMemoryIds.push(memoryId);
+          const outcome = await dbService.storeMemory(content, type, metadata);
+          testMemoryIds.push(outcome.memoryId);
           if (tags && tags.length > 0) {
-            await dbService.addMemoryTags(memoryId, tags);
+            await dbService.addMemoryTags(outcome.memoryId, tags);
           }
-          return memoryId;
+          return outcome;
         };
 
         const mockDetectMemoryType = () => 'code';

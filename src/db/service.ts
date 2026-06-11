@@ -16,11 +16,12 @@ import {
   QueueFixConsumedOutcome,
   QueueFixFilter,
   QueueFixInput,
+  StoreMemoryOutcome,
 } from './adapters/base.js';
 
 import { rerankConfigFromEnv, rerankByBge, type RerankConfig } from './rerank.js';
 
-export type { QueueFix, QueueFixFilter, QueueFixInput, QueueFixConsumedOutcome } from './adapters/base.js';
+export type { QueueFix, QueueFixFilter, QueueFixInput, QueueFixConsumedOutcome, StoreMemoryOutcome } from './adapters/base.js';
 
 // Re-export types from base for backwards compatibility
 export const MemoryType = z.enum(['conversation', 'code', 'decision', 'reference']);
@@ -146,7 +147,7 @@ export class DatabaseService {
         sourceKey?: string,
         sourceDocId?: string,
         provenance?: MemoryProvenance
-    ): Promise<string> {
+    ): Promise<StoreMemoryOutcome> {
         if (!this.devProjectId) {
             throw new Error('DatabaseService not initialized. Call initialize() first.');
         }
@@ -165,7 +166,7 @@ export class DatabaseService {
         sourceKey?: string,
         sourceDocId?: string,
         provenance?: MemoryProvenance
-    ): Promise<string> {
+    ): Promise<StoreMemoryOutcome> {
         return this.adapter.storeMemory(content, type, metadata, projectId, sourceKey, sourceDocId, provenance);
     }
 

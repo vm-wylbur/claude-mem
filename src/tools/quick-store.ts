@@ -3,7 +3,7 @@
 // Date: 2025-07-04
 
 import { BaseMCPTool, MCPResponse } from './base-tool.js';
-import { MemoryType, MemoryProvenance } from '../db/service.js';
+import { MemoryType, MemoryProvenance, StoreMemoryOutcome } from '../db/service.js';
 import { formatHashForDisplay } from '../utils/hash.js';
 
 export interface QuickStoreParams {
@@ -18,7 +18,7 @@ export interface QuickStoreParams {
 export class QuickStoreTool extends BaseMCPTool<QuickStoreParams> {
   constructor(
     dbService: any,
-    private storeMemoryWithTagsFunction: (content: string, type: MemoryType, metadata: any, tags?: string[], sourceKey?: string, provenance?: MemoryProvenance) => Promise<string>,
+    private storeMemoryWithTagsFunction: (content: string, type: MemoryType, metadata: any, tags?: string[], sourceKey?: string, provenance?: MemoryProvenance) => Promise<StoreMemoryOutcome>,
     private detectMemoryTypeFunction: (content: string) => MemoryType,
     private generateSmartTagsFunction: (content: string, type: MemoryType) => Promise<string[]>
   ) {
@@ -46,7 +46,7 @@ export class QuickStoreTool extends BaseMCPTool<QuickStoreParams> {
       }
       
       // Use shared storage function
-      const memoryId = await this.storeMemoryWithTagsFunction(content, detectedType, {
+      const outcome = await this.storeMemoryWithTagsFunction(content, detectedType, {
         implementation_status: status,
         key_decisions: keyDecisions,
         date: new Date().toISOString()
@@ -57,7 +57,7 @@ export class QuickStoreTool extends BaseMCPTool<QuickStoreParams> {
           type: 'text',
           text: JSON.stringify({
             success: true,
-            memoryId: formatHashForDisplay(memoryId),
+            memoryId: formatHashForDisplay(outcome.memoryId),
             detectedType: detectedType,
             autoDetected: !type,
             tags: allTags,
@@ -66,7 +66,12 @@ export class QuickStoreTool extends BaseMCPTool<QuickStoreParams> {
             // Echoes the ACCEPTED INPUT, not a read-back of the row — on an
             // upsert conflict the COALESCE policy can keep earlier values
             // this echo doesn't see. Persistence assertions need a DB read.
-            provenance: provenance
+            provenance: provenance,
+            // W8 signals (present only when meaningful): evicted = sticky-
+            // tombstone collision; updated:false + deferred_to = keyed
+            // no-clobber refusal. Either also means tags were NOT attached.
+            ...(outcome.evicted ? { evicted: true } : {}),
+            ...(outcome.updated ? {} : { updated: false, deferred_to: outcome.deferred_to ?? null })
           }, null, 2)
         }]
       };

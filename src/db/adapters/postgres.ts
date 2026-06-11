@@ -17,6 +17,7 @@ import {
   QueueFixConsumedOutcome,
   QueueFixFilter,
   QueueFixInput,
+  StoreMemoryOutcome,
 } from './base.js';
 import { MemoryType, MemoryMetadata, MemoryProvenance, Memory } from '../service.js';
 import { generateEmbedding, generateEmbeddingWithFallback } from '../../embeddings.js';
@@ -224,7 +225,7 @@ export class PostgresAdapter implements DatabaseAdapter {
     sourceKey?: string,
     sourceDocId?: string,
     provenance?: MemoryProvenance
-  ): Promise<string> {
+  ): Promise<StoreMemoryOutcome> {
     if (!this.pool) throw new DatabaseConnectionError('Not connected', 'postgresql');
 
     const client = await this.pool.connect();
@@ -246,15 +247,22 @@ export class PostgresAdapter implements DatabaseAdapter {
       const host = provenance?.host ?? null;
       const agentId = provenance?.agent_id ?? null;
 
-      let result;
+      let outcome: StoreMemoryOutcome;
       if (sourceKey) {
         // Keyed upsert. memory_id is derived from the source_key (not the
         // content) so it stays stable across edits — re-storing an edited
         // memory file updates the SAME row (content/type/metadata/embedding
         // refreshed) instead of inserting a new content-hash row. Keying the
         // PK on source_key also avoids colliding with content-hash ids.
+        //
+        // W8 no-clobber guard (claude-mem#12): the DO UPDATE fires only when
+        // the existing row is unowned OR owned by the SAME agent. A keyed
+        // collision with another agent's memory is REFUSED — zero rows
+        // return, and we report {updated:false, deferred_to:<owner>}. A
+        // provenance-less write (EXCLUDED.agent_id NULL) cannot clobber an
+        // owned row either: NULL = owner is not TRUE.
         const memoryId = generateMemoryHash(sourceKey, 'source-key');
-        result = await client.query(`
+        const result = await client.query(`
           INSERT INTO memories (memory_id, project_id, content, content_type, metadata, embedding, source_key, source_doc_id, session_id, host, agent_id)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
           ON CONFLICT (source_key) WHERE source_key IS NOT NULL DO UPDATE SET
@@ -267,12 +275,42 @@ export class PostgresAdapter implements DatabaseAdapter {
             host = COALESCE(EXCLUDED.host, memories.host),
             agent_id = COALESCE(EXCLUDED.agent_id, memories.agent_id),
             updated_at = CURRENT_TIMESTAMP
-          RETURNING memory_id
+          WHERE memories.agent_id IS NULL OR memories.agent_id = EXCLUDED.agent_id
+          RETURNING memory_id, evicted_at
         `, [memoryId, projectId, content, type, metadataJson, embedding, sourceKey, docId, sessionId, host, agentId]);
+        if ((result.rowCount ?? 0) > 0) {
+          outcome = {
+            memoryId: result.rows[0].memory_id,
+            updated: true,
+            evicted: result.rows[0].evicted_at !== null,
+          };
+        } else {
+          // Guard refused: report the owner, change nothing. The row can
+          // vanish between the conflict-check and this SELECT (concurrent
+          // delete under READ COMMITTED) — fail loud, not TypeError-500.
+          const existing = await client.query(
+            'SELECT memory_id, agent_id, evicted_at FROM memories WHERE source_key = $1',
+            [sourceKey]
+          );
+          if ((existing.rowCount ?? 0) === 0) {
+            throw new Error(`keyed row for source_key=${sourceKey} vanished during no-clobber check; retry the write`);
+          }
+          outcome = {
+            memoryId: existing.rows[0].memory_id,
+            updated: false,
+            deferred_to: existing.rows[0].agent_id,
+            evicted: existing.rows[0].evicted_at !== null,
+          };
+        }
       } else {
-        // Unkeyed: original content-hash dedup behavior, unchanged.
+        // Unkeyed: content-hash dedup. The DO UPDATE only backfills NULL
+        // provenance (first-writer-wins), so there is no clobber to guard;
+        // evicted_at is NOT touched (sticky-tombstone, PB-ratified
+        // 2026-06-11): colliding with a tombstoned row reports evicted=true
+        // and the row STAYS invisible — revival requires an explicit
+        // /unevict.
         const memoryId = generateMemoryHash(content, type);
-        result = await client.query(`
+        const result = await client.query(`
           INSERT INTO memories (memory_id, project_id, content, content_type, metadata, embedding, source_doc_id, session_id, host, agent_id)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
           ON CONFLICT (memory_id) DO UPDATE SET
@@ -281,12 +319,17 @@ export class PostgresAdapter implements DatabaseAdapter {
             host = COALESCE(memories.host, EXCLUDED.host),
             agent_id = COALESCE(memories.agent_id, EXCLUDED.agent_id),
             updated_at = CURRENT_TIMESTAMP
-          RETURNING memory_id
+          RETURNING memory_id, evicted_at
         `, [memoryId, projectId, content, type, metadataJson, embedding, docId, sessionId, host, agentId]);
+        outcome = {
+          memoryId: result.rows[0].memory_id,
+          updated: true,
+          evicted: result.rows[0].evicted_at !== null,
+        };
       }
 
       await client.query('COMMIT');
-      return result.rows[0].memory_id;
+      return outcome;
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -295,6 +338,10 @@ export class PostgresAdapter implements DatabaseAdapter {
     }
   }
 
+  // W8 note: this path is provenance-less and unkeyed, so the no-clobber
+  // guard is N/A (its DO UPDATE touches only updated_at). If provenance is
+  // ever added here, it MUST gain the same guard + evicted signal as
+  // storeMemory above — do not extend this method without them.
   async storeMemoryWithEmbeddingStatus(
     content: string,
     type: MemoryType,

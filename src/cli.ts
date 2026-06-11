@@ -34,7 +34,7 @@ program
     .option('--tags <tags...>', 'Tags to associate with the memory')
     .action(async (content, options) => {
         try {
-            const memoryId = await storeDevProgress(dbService, content, options.type as MemoryType, {
+            const { memoryId } = await storeDevProgress(dbService, content, options.type as MemoryType, {
                 implementation_status: options.status,
                 key_decisions: options.keyDecisions,
                 code_changes: options.codeChanges,

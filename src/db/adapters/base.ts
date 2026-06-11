@@ -67,6 +67,19 @@ export interface SystemHealthInfo {
   };
 }
 
+// Outcome of a storeMemory write (W8 engine half, claude-mem#12 contract).
+// `updated=false` = the keyed upsert was REFUSED by the no-clobber guard
+// (the existing row belongs to another agent; `deferred_to` names it).
+// `evicted=true` = the write landed on a tombstoned row (sticky-tombstone:
+// the row stays evicted and invisible to serving reads — the writer must
+// deliberately unevict if revival is intended).
+export interface StoreMemoryOutcome {
+  memoryId: string;
+  updated: boolean;
+  deferred_to?: string;
+  evicted: boolean;
+}
+
 export interface DatabaseAdapter {
   //
   // Connection Lifecycle Management
@@ -112,10 +125,13 @@ export interface DatabaseAdapter {
    * @param provenance - Optional client-supplied write provenance
    *   (session_id/host/agent_id → typed columns). Conflict policy: on a
    *   KEYED upsert (an edit) provided fields overwrite and omitted fields
-   *   keep the existing value; on an UNKEYED content-hash conflict
-   *   (identical content) existing values win — the new write only fills
-   *   NULLs, so the original author keeps attribution.
-   * @returns Promise resolving to the new memory hash ID (as string)
+   *   keep the existing value — UNLESS the row belongs to ANOTHER agent
+   *   (W8 no-clobber: existing agent_id set and != incoming), in which case
+   *   the write is REFUSED (updated=false, deferred_to = the owner); on an
+   *   UNKEYED content-hash conflict (identical content) existing values
+   *   win — the new write only fills NULLs, so the original author keeps
+   *   attribution.
+   * @returns StoreMemoryOutcome — memoryId + the W8 signals.
    */
   storeMemory(
     content: string,
@@ -125,7 +141,7 @@ export interface DatabaseAdapter {
     sourceKey?: string,
     sourceDocId?: string,
     provenance?: MemoryProvenance
-  ): Promise<string>;
+  ): Promise<StoreMemoryOutcome>;
 
   /**
    * Retrieve a specific memory by ID
