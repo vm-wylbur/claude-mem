@@ -66,7 +66,10 @@ export class QuickStoreTool extends BaseMCPTool<QuickStoreParams> {
             // Echoes the ACCEPTED INPUT, not a read-back of the row — on an
             // upsert conflict the COALESCE policy can keep earlier values
             // this echo doesn't see. Persistence assertions need a DB read.
+            // Conformance v1.2.0 pins the echo at TOP LEVEL (session_id/
+            // host/agent_id); the nested object stays for back-compat.
             provenance: provenance,
+            ...(provenance ?? {}),
             // W8 signals (present only when meaningful): evicted = sticky-
             // tombstone collision; updated:false + deferred_to = keyed
             // no-clobber refusal. Either also means tags were NOT attached.

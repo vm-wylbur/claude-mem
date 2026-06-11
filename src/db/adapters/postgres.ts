@@ -247,6 +247,23 @@ export class PostgresAdapter implements DatabaseAdapter {
       const host = provenance?.host ?? null;
       const agentId = provenance?.agent_id ?? null;
 
+      // W8 no-resurrection (conformance v1.3.0): a write whose CONTENT
+      // matches ANY tombstoned row — content equality scoped to
+      // (content, content_type), regardless of which id era/branch wrote
+      // the tombstone — is a NOOP + evicted:true signal, checked BEFORE the
+      // branch split. Keyed ids ignore content (the distiller re-deriving a
+      // forgotten insight under a fresh source_key would slip past its own
+      // upsert), and the unkeyed conflict only sees content-hash-id rows.
+      // Sticky-tombstone, PB-ratified 2026-06-11: revival is /unevict only.
+      const tombstoned = await client.query(
+        'SELECT memory_id FROM memories WHERE content = $1 AND content_type = $2 AND evicted_at IS NOT NULL LIMIT 1',
+        [content, type]
+      );
+      if ((tombstoned.rowCount ?? 0) > 0) {
+        await client.query('COMMIT');
+        return { memoryId: tombstoned.rows[0].memory_id, updated: false, evicted: true };
+      }
+
       let outcome: StoreMemoryOutcome;
       if (sourceKey) {
         // Keyed upsert. memory_id is derived from the source_key (not the
