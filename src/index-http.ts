@@ -330,10 +330,25 @@ app.post('/harvest', async (req: express.Request, res: express.Response): Promis
         res.status(400).json({ error: `content_type must be one of ${HARVEST_TYPES.join('|')}` });
         return;
     }
+    // Provenance: same three optional fields and stance as /store (W9 /
+    // harvest-conformance). With W8's no-clobber rule keyed on
+    // agent_id IS NOT NULL, harvested memories must be able to carry their
+    // writer's identity (the distiller's agent id, the harvest host).
+    const provenance: MemoryProvenance = {};
+    for (const name of ['session_id', 'host', 'agent_id'] as const) {
+        const value = optionalString((req.body as Record<string, unknown>)[name]);
+        if (value === null) {
+            res.status(400).json({ error: `${name} must be a non-empty string when provided` });
+            return;
+        }
+        if (value === undefined) continue;
+        provenance[name] = value;
+    }
     const memoryId = await storeDevProgress(
         dbService, b.content, type, b.metadata ?? {},
         typeof b.source_key === 'string' && b.source_key.length > 0 ? b.source_key : undefined,
         typeof b.source_doc_id === 'string' && b.source_doc_id.length > 0 ? b.source_doc_id : undefined,
+        Object.keys(provenance).length > 0 ? provenance : undefined,
     );
     if (Array.isArray(b.tags) && b.tags.length > 0) {
         await dbService.addMemoryTags(memoryId, b.tags);
