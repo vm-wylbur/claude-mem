@@ -258,7 +258,7 @@ class TagConstraintContractTester {
           const testContent = 'TEST-DB-CONSTRAINTS: Direct constraint test';
           if (!this.service) throw new Error('Service not initialized');
           
-          const memoryId = await this.service.storeDevMemory(
+          const { memoryId } = await this.service.storeDevMemory(
             testContent,
             'code',
             { status: 'test', date: new Date().toISOString() }

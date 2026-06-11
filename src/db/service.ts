@@ -84,7 +84,7 @@ export interface Memory {
  * await adapter.connect();
  * const service = new DatabaseService(adapter);
  *
- * const memoryId = await service.storeDevMemory(content, type, metadata);
+ * const { memoryId } = await service.storeDevMemory(content, type, metadata);
  * const similar = await service.findSimilarMemories(content, 5);
  * ```
  */

@@ -257,7 +257,7 @@ class PostgreSQLTester {
       await this.service.initialize();
       
       // Test storing a development memory
-      const memoryId = await this.service.storeDevMemory(
+      const { memoryId } = await this.service.storeDevMemory(
         'Testing DatabaseService integration with PostgreSQL adapter',
         'code',
         {

@@ -86,7 +86,7 @@ class MethodParityContractTester {
     try {
       if (!this.service) throw new Error('Service not initialized');
       
-      const memoryId = await this.service.storeDevMemory(
+      const { memoryId } = await this.service.storeDevMemory(
         content,
         'code',
         { status: 'test', date: new Date().toISOString() }

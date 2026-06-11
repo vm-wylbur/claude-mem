@@ -57,12 +57,13 @@ export function generateMemoryHash(content: string, contentType: string): string
   // Combine content and type for hash input
   // This ensures same content with different types gets different IDs
   const hashInput = `${content}:${contentType}`;
-  
-  // Generate xxHash64 and convert to hex string for consistency
+
+  // Generate xxHash64 as canonical 16-char zero-padded hex (issue #22:
+  // unpadded toString(16) made ~1/16 of ids 15 chars in the DB while
+  // responses echoed the padded form — the echoed id then 404'd on lookup.
+  // Migration 005 canonicalized existing rows; generation must match).
   const hashBigInt = hasher(hashInput);
-  const hashHex = hashBigInt.toString(16);
-  
-  return hashHex;
+  return hashBigInt.toString(16).padStart(16, '0');
 }
 
 /**
@@ -123,12 +124,10 @@ export function generateTagHash(tagName: string): string {
   // Normalize tag name for consistent hashing
   const normalizedName = tagName.toLowerCase().trim();
   const hashInput = `tag:${normalizedName}`;
-  
-  // Generate xxHash64 and convert to hex string for consistency with memory hashes
+
+  // Canonical 16-char padded hex, same as generateMemoryHash (issue #22).
   const hashBigInt = hasher(hashInput);
-  const hashHex = hashBigInt.toString(16);
-  
-  return hashHex;
+  return hashBigInt.toString(16).padStart(16, '0');
 }
 
 /**
@@ -214,10 +213,10 @@ export function generateMigrationHash(
   if (createdAt) {
     hashInput += `:${createdAt}`;
   }
-  
+
   const hashBigInt = hasher(hashInput);
-  
-  return hashBigInt.toString(16);
+
+  return hashBigInt.toString(16).padStart(16, '0');
 }
 
 /**
@@ -244,8 +243,8 @@ export function generateTagMigrationHash(tagName: string, tagId?: number): strin
     // This is a fallback for the extremely unlikely case of hash collision
     hashInput += `:fallback:${tagId}`;
   }
-  
+
   const hashBigInt = hasher(hashInput);
-  
-  return hashBigInt.toString(16);
+
+  return hashBigInt.toString(16).padStart(16, '0');
 }

@@ -301,7 +301,7 @@ class TagGenerationContractTester {
           if (!this.service) throw new Error('Service not initialized');
           
           const content = 'TEST-TAG-GENERATION: Simple database test';
-          const memoryId = await this.service.storeDevMemory(
+          const { memoryId } = await this.service.storeDevMemory(
             content,
             'code',
             { status: 'test', date: new Date().toISOString() }
@@ -326,7 +326,7 @@ class TagGenerationContractTester {
           
           console.error(`  Auto-generated tags: ${autoTags.join(', ')}`);
           
-          const memoryId = await this.service.storeDevMemory(
+          const { memoryId } = await this.service.storeDevMemory(
             content,
             'code',
             { status: 'test', date: new Date().toISOString() }

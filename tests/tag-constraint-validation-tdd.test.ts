@@ -36,7 +36,7 @@ describe('Tag Constraint Validation - RED Phase', () => {
   describe('Duplicate Tag Detection', () => {
     it('should provide specific error message when tag already exists', async () => {
       // Create a memory with some tags
-      const memoryId = await dbService.storeDevMemory(
+      const { memoryId } = await dbService.storeDevMemory(
         'Test memory with existing tags',
         'code',
         {
@@ -76,7 +76,7 @@ describe('Tag Constraint Validation - RED Phase', () => {
 
     it('should identify multiple existing tags in error message', async () => {
       // Setup: Create memory with existing tags
-      const memoryId = await dbService.storeDevMemory(
+      const { memoryId } = await dbService.storeDevMemory(
         'Memory for testing multiple duplicates',
         'reference',
         {
@@ -114,7 +114,7 @@ describe('Tag Constraint Validation - RED Phase', () => {
     });
 
     it('should succeed when adding only new tags', async () => {
-      const memoryId = await dbService.storeDevMemory(
+      const { memoryId } = await dbService.storeDevMemory(
         'Memory for testing new tags only',
         'code',
         {
@@ -147,7 +147,7 @@ describe('Tag Constraint Validation - RED Phase', () => {
 
     it('should provide helpful suggestions for common tag conflicts', async () => {
       // This test defines behavior for smart error handling
-      const memoryId = await dbService.storeDevMemory(
+      const { memoryId } = await dbService.storeDevMemory(
         'Memory for testing suggestions',
         'code',
         {
@@ -175,7 +175,7 @@ describe('Tag Constraint Validation - RED Phase', () => {
   describe('Performance and Efficiency', () => {
     it('should validate all tags before any database operations', async () => {
       // This test ensures we don't partially insert tags before hitting a constraint
-      const memoryId = await dbService.storeDevMemory(
+      const { memoryId } = await dbService.storeDevMemory(
         'Memory for atomic tag validation',
         'code',
         {
