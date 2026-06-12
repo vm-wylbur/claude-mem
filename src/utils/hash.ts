@@ -93,8 +93,16 @@ export function parseHexToHash(hexHash: string): string {
 }
 
 /**
+ * Canonical memory/tag/project id shape: 16 lowercase hex chars, enforced
+ * by the DB CHECK constraints in migration 006_canonical_id_checks.sql.
+ * Use this wherever a canonical id crosses the API boundary; isValidHashId
+ * below is looser (legacy, any-length case-insensitive hex).
+ */
+export const CANONICAL_ID_RE = /^[0-9a-f]{16}$/;
+
+/**
  * Validate that a hash ID is properly formatted
- * 
+ *
  * @param hashId - Hash ID to validate
  * @returns true if valid hex hash
  */

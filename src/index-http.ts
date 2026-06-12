@@ -26,6 +26,7 @@ import { storeInitialProgress, storeDevProgress } from './dev-memory.js';
 import { detectMemoryType, generateSmartTags } from './server.js';
 import { QuickStoreTool } from './tools/quick-store.js';
 import { GetRecentContextTool } from './tools/get-recent-context.js';
+import { CANONICAL_ID_RE } from './utils/hash.js';
 
 config();
 
@@ -118,11 +119,30 @@ app.post('/store', async (req: express.Request, res: express.Response): Promise<
         if (value === undefined) continue;
         provenance[name] = value;
     }
+    // Consolidation reverse edge (claude-mem#12): optional list of the
+    // sibling memory_ids a survivor was synthesized from. Shape-only
+    // validation (canonical 16-hex ids); existence/liveness of the ids is
+    // verified verb-side by mem-forget.sh's evidence gate, not here.
+    const consolidatedFromRaw = (req.body as Record<string, unknown>)['consolidated_from'];
+    let consolidatedFrom: string[] | undefined;
+    if (consolidatedFromRaw !== undefined && consolidatedFromRaw !== null) {
+        const valid = Array.isArray(consolidatedFromRaw)
+            && consolidatedFromRaw.length > 0
+            && consolidatedFromRaw.length <= 100
+            && consolidatedFromRaw.every(id => typeof id === 'string' && CANONICAL_ID_RE.test(id))
+            && new Set(consolidatedFromRaw).size === consolidatedFromRaw.length;
+        if (!valid) {
+            res.status(400).json({ error: 'consolidated_from must be a non-empty array (max 100) of distinct 16-char lowercase hex memory_ids when provided' });
+            return;
+        }
+        consolidatedFrom = consolidatedFromRaw as string[];
+    }
     const result = await restQuickStore.handle({
         content,
         tags: Array.isArray(tags) ? tags : undefined,
         source_key: typeof source_key === 'string' && source_key.length > 0 ? source_key : undefined,
-        provenance: Object.keys(provenance).length > 0 ? provenance : undefined
+        provenance: Object.keys(provenance).length > 0 ? provenance : undefined,
+        consolidated_from: consolidatedFrom
     });
     const storeBlock = result.content[0] as { type: 'text'; text: string };
     res.json(JSON.parse(storeBlock.text));

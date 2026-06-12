@@ -27,6 +27,7 @@ class QuickStoreToolTester {
     await this.testWithOverrideType();
     await this.testWithAdditionalTags();
     await this.testDecisionExtraction();
+    await this.testConsolidatedFrom();
 
     this.printResults();
   }
@@ -158,6 +159,77 @@ class QuickStoreToolTester {
       this.results.push({ 
         name: 'Decision Extraction', 
         passed: false, 
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
+  private async testConsolidatedFrom(): Promise<void> {
+    try {
+      let capturedMetadata: any;
+      const capturingStore = async (_content: string, _type: any, metadata: any) => {
+        capturedMetadata = metadata;
+        return { memoryId: 'mock-memory-id-456', updated: true, evicted: false };
+      };
+
+      const tool = new QuickStoreTool(
+        {} as any,
+        capturingStore,
+        mockDetectMemoryType,
+        mockGenerateSmartTags
+      );
+
+      const siblings = ['831ef08da8e9a466', '7d816d21b14b8c15'];
+      const result = await tool.handle({
+        content: 'Consolidated survivor memory',
+        consolidated_from: siblings
+      });
+      const response = JSON.parse(result.content[0].text);
+
+      if (JSON.stringify(capturedMetadata?.consolidated_from) !== JSON.stringify(siblings)) {
+        throw new Error('consolidated_from should land in stored metadata verbatim');
+      }
+      if (JSON.stringify(response.consolidated_from) !== JSON.stringify(siblings)) {
+        throw new Error('consolidated_from should be echoed in the response');
+      }
+
+      // Absent input -> absent everywhere (field must not appear as [] or null)
+      capturedMetadata = undefined;
+      const bare = await tool.handle({ content: 'No consolidation here' });
+      if (bare.isError) {
+        throw new Error('bare store should succeed');
+      }
+      const bareResponse = JSON.parse(bare.content[0].text);
+      if (capturedMetadata === undefined || 'consolidated_from' in capturedMetadata || 'consolidated_from' in bareResponse) {
+        throw new Error('consolidated_from must be absent when not provided');
+      }
+
+      // W8 refusal paths write nothing: the echo must not claim the edge.
+      const refusingStore = async () =>
+        ({ memoryId: 'mock-memory-id-456', updated: false, deferred_to: 'other-agent', evicted: false });
+      const refusingTool = new QuickStoreTool(
+        {} as any,
+        refusingStore,
+        mockDetectMemoryType,
+        mockGenerateSmartTags
+      );
+      const refused = await refusingTool.handle({
+        content: 'Consolidated survivor memory',
+        consolidated_from: siblings
+      });
+      const refusedResponse = JSON.parse(refused.content[0].text);
+      if ('consolidated_from' in refusedResponse) {
+        throw new Error('consolidated_from must NOT be echoed when the write was refused');
+      }
+      if (refusedResponse.updated !== false) {
+        throw new Error('refusal signal updated:false must survive alongside the suppressed echo');
+      }
+
+      this.results.push({ name: 'Consolidated From', passed: true });
+    } catch (error) {
+      this.results.push({
+        name: 'Consolidated From',
+        passed: false,
         error: error instanceof Error ? error.message : String(error)
       });
     }

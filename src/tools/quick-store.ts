@@ -13,6 +13,11 @@ export interface QuickStoreParams {
   tags?: string[];
   source_key?: string;
   provenance?: MemoryProvenance;
+  // Consolidation reverse edge (claude-mem#12): the sibling memory_ids this
+  // memory was synthesized from, written at synthesis time. Shape-validated
+  // at the route; existence of the ids is the verb-side evidence gate's job
+  // (same stance as evict_reason free TEXT).
+  consolidated_from?: string[];
 }
 
 export class QuickStoreTool extends BaseMCPTool<QuickStoreParams> {
@@ -27,7 +32,7 @@ export class QuickStoreTool extends BaseMCPTool<QuickStoreParams> {
 
   async handle(params: QuickStoreParams): Promise<MCPResponse> {
     try {
-      const { content, type, status, tags = [], source_key, provenance } = params;
+      const { content, type, status, tags = [], source_key, provenance, consolidated_from } = params;
       
       // Auto-detect memory type if not provided
       const detectedType = type || this.detectMemoryTypeFunction(content);
@@ -49,7 +54,8 @@ export class QuickStoreTool extends BaseMCPTool<QuickStoreParams> {
       const outcome = await this.storeMemoryWithTagsFunction(content, detectedType, {
         implementation_status: status,
         key_decisions: keyDecisions,
-        date: new Date().toISOString()
+        date: new Date().toISOString(),
+        ...(consolidated_from?.length ? { consolidated_from } : {})
       }, allTags, source_key, provenance);
 
       return {
@@ -70,6 +76,15 @@ export class QuickStoreTool extends BaseMCPTool<QuickStoreParams> {
             // host/agent_id); the nested object stays for back-compat.
             provenance: provenance,
             ...(provenance ?? {}),
+            // consolidated_from is echoed only when the write went through
+            // (outcome.updated): on the W8 refusal paths below nothing is
+            // written, and a consolidation verb acts destructively (evicts
+            // siblings) on this echo — it must not claim an edge that was
+            // never stored. Caveat: an UNKEYED content-hash dedup against a
+            // live row reports updated:true without writing metadata, and is
+            // indistinguishable here; callers doing destructive follow-ups
+            // must read the row back (GET /memory/:id) before acting.
+            ...(consolidated_from?.length && outcome.updated ? { consolidated_from } : {}),
             // W8 signals (present only when meaningful): evicted = sticky-
             // tombstone collision; updated:false + deferred_to = keyed
             // no-clobber refusal. Either also means tags were NOT attached.
