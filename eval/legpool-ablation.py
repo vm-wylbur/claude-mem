@@ -38,7 +38,7 @@ from pathlib import Path
 OLLAMA = "http://localhost:11434/api/embeddings"
 EMBED_MODEL = "nomic-embed-text"
 DB_PROJECT = "0000000000000001"
-WIDE = 1300          # >= live store size -> exhaustive leg depth
+WIDE = 5000          # >= live store size -> exhaustive leg depth (store grew to ~4.4k after the 2026-06-11 distiller re-run; was 1300)
 POOLS = [50, 100, 200, 400, WIDE]
 SUBSETS = {          # leg subsets: containment = min(active ranks) <= P
     "fts+vec+trgm": ("fts", "vec", "trgm"),

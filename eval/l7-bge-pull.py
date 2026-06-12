@@ -34,7 +34,7 @@ import urllib.request
 from pathlib import Path
 
 BASE = "http://snowball:3456"
-EVAL_SESSION = "bandb-eval-20260610"
+EVAL_SESSION = os.environ.get("BANDB_EVAL_SESSION", "bandb-eval-20260610")
 TOP_N = 10
 
 
